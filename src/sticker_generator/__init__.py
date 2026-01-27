@@ -19,7 +19,7 @@ from sticker_generator.styles import (
     get_style,
 )
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __all__ = [
     "create_sticker",
     "generate_sticker",
