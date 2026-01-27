@@ -6,6 +6,12 @@ from sticker_generator.image_processing import (
     remove_green_screen_aggressive,
     remove_green_screen_hsv,
 )
+from sticker_generator.sheet import (
+    SheetResult,
+    calculate_grid_layout,
+    create_sheet_image,
+    generate_sticker_sheet,
+)
 
 __version__ = "0.2.0"
 __all__ = [
@@ -14,4 +20,8 @@ __all__ = [
     "remove_green_screen_hsv",
     "remove_green_screen_aggressive",
     "cleanup_edges",
+    "generate_sticker_sheet",
+    "create_sheet_image",
+    "calculate_grid_layout",
+    "SheetResult",
 ]
