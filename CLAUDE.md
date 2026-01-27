@@ -36,6 +36,7 @@ This package generates stickers with transparent backgrounds using Google's Gemi
 Key modules:
 - `core.py`: Gemini API interaction, prompt engineering, main `create_sticker()` function
 - `image_processing.py`: Pure image processing (no API calls), HSV conversion, green removal, edge cleanup
+- `styles.py`: Style presets that modify prompts (kawaii, minimal, 3d, pixel-art, retro, watercolor)
 - `sheet.py`: Sticker sheet generation - multiple variations combined into a grid
 - `cli.py`: Command-line interface wrapping `create_sticker()` and `generate_sticker_sheet()`
 

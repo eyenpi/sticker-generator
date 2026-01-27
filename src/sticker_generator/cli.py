@@ -8,6 +8,7 @@ from pathlib import Path
 
 from sticker_generator.core import create_sticker
 from sticker_generator.sheet import generate_sticker_sheet
+from sticker_generator.styles import get_available_styles
 
 
 def main() -> int:
@@ -82,6 +83,13 @@ def main() -> int:
         default=10,
         help="Padding between stickers in sheet (default: 10 pixels)",
     )
+    parser.add_argument(
+        "-s",
+        "--style",
+        choices=get_available_styles(),
+        metavar="STYLE",
+        help="Style preset: " + ", ".join(get_available_styles()),
+    )
 
     args = parser.parse_args()
 
@@ -96,6 +104,8 @@ def main() -> int:
         print(f"Generating sticker: {args.prompt}")
         if args.images:
             print(f"Using {len(args.images)} reference image(s)")
+        if args.style:
+            print(f"Using style: {args.style}")
 
         if args.variations > 1:
             print(f"Generating {args.variations} variations...")
@@ -111,6 +121,7 @@ def main() -> int:
                 edge_threshold=args.edge_threshold,
                 columns=args.columns,
                 padding=args.padding,
+                style=args.style,
             )
 
             if result.failed_indices:
@@ -132,6 +143,7 @@ def main() -> int:
                 input_images=args.images,
                 api_key=args.api_key,
                 edge_threshold=args.edge_threshold,
+                style=args.style,
             )
             print(f"Sticker saved to: {args.output}")
 

@@ -115,6 +115,7 @@ def generate_sticker_sheet(
     padding: int = 10,
     delay_between_requests: float = 0.5,
     max_retries: int = 2,
+    style: str | None = None,
 ) -> SheetResult:
     """Generate multiple sticker variations and combine into a sheet.
 
@@ -132,6 +133,7 @@ def generate_sticker_sheet(
         padding: Padding between stickers in pixels.
         delay_between_requests: Seconds to wait between API calls.
         max_retries: Number of retries for failed generations.
+        style: Optional style for the stickers.
 
     Returns:
         SheetResult with stickers, sheet image, and failed indices.
@@ -152,6 +154,7 @@ def generate_sticker_sheet(
                     input_images=input_images,
                     api_key=api_key,
                     edge_threshold=edge_threshold,
+                    style=style,
                 )
                 stickers.append(sticker)
                 print(f"Generated variation {i + 1}/{variations}")

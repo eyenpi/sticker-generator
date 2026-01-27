@@ -35,6 +35,10 @@ sticker-generator "similar style illustration" -i reference1.png -i reference2.p
 # Custom aspect ratio
 sticker-generator "a wide banner" --aspect-ratio 16:9
 
+# Use a style preset
+sticker-generator "a happy robot" --style kawaii
+sticker-generator "a space astronaut" -s 3d -o astronaut.png
+
 # Save raw image before processing
 sticker-generator "a dog" --save-raw
 
@@ -52,16 +56,38 @@ sticker-generator "star" -n 9 --sheet --columns 3 -o stars.png
 sticker-generator "robot" -n 4 --sheet --save-individuals -o robots.png
 ```
 
+#### Available Styles
+
+| Style | Description |
+|-------|-------------|
+| `kawaii` | Cute Japanese style with big eyes and pastel colors |
+| `minimal` | Clean minimalist style with flat colors |
+| `3d` | 3D rendered look with depth and lighting |
+| `pixel-art` | Retro pixel art style |
+| `retro` | Vintage retro style with muted colors |
+| `watercolor` | Soft watercolor painting style |
+
 ### Python API
 
 ```python
-from sticker_generator import create_sticker
+from sticker_generator import create_sticker, get_available_styles
 
 # Basic usage
 sticker = create_sticker(
     prompt="a cute happy cat with big eyes",
     output="cat.png"
 )
+
+# With a style preset
+sticker = create_sticker(
+    prompt="a happy robot",
+    output="robot.png",
+    style="kawaii"
+)
+
+# List available styles
+print(get_available_styles())
+# ['3d', 'kawaii', 'minimal', 'pixel-art', 'retro', 'watercolor']
 
 # With reference images
 sticker = create_sticker(
@@ -132,9 +158,10 @@ clean.save("transparent.png")
 
 ## How It Works
 
-1. **Generation**: Uses Gemini AI to generate an image with a chromakey green (#00FF00) background
-2. **Green Removal**: Converts to HSV color space and removes pixels matching green hue
-3. **Edge Cleanup**: Removes semi-transparent edge artifacts for clean results
+1. **Style Application**: Optional style presets modify your prompt to achieve specific visual styles
+2. **Generation**: Uses Gemini AI to generate an image with a chromakey green (#00FF00) background
+3. **Green Removal**: Converts to HSV color space and removes pixels matching green hue
+4. **Edge Cleanup**: Removes semi-transparent edge artifacts for clean results
 
 ## License
 

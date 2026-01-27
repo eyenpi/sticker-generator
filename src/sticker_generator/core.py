@@ -17,6 +17,7 @@ from sticker_generator.image_processing import (
     remove_green_screen_hsv,
     save_transparent_png,
 )
+from sticker_generator.styles import format_prompt_with_style
 
 if TYPE_CHECKING:
     from os import PathLike
@@ -88,6 +89,7 @@ def generate_sticker(
     aspect_ratio: str = "1:1",
     input_images: list[str | PathLike] | None = None,
     api_key: str | None = None,
+    style: str | None = None,
 ) -> Image.Image:
     """Generate a sticker image with chromakey green background.
 
@@ -96,6 +98,7 @@ def generate_sticker(
         aspect_ratio: Image aspect ratio (default "1:1").
         input_images: Optional list of reference image paths.
         api_key: Optional Gemini API key (uses GEMINI_API_KEY env var if not provided).
+        style: Optional style preset name (e.g., "kawaii", "minimal", "3d").
 
     Returns:
         PIL Image with green background (before processing).
@@ -105,7 +108,8 @@ def generate_sticker(
     """
     client = genai.Client(api_key=api_key) if api_key else genai.Client()
 
-    enhanced_prompt = CHROMAKEY_PROMPT_TEMPLATE.format(prompt=prompt)
+    styled_prompt = format_prompt_with_style(prompt, style)
+    enhanced_prompt = CHROMAKEY_PROMPT_TEMPLATE.format(prompt=styled_prompt)
 
     input_content: str | list = enhanced_prompt
     if input_images:
@@ -142,6 +146,7 @@ def create_sticker(
     input_images: list[str | PathLike] | None = None,
     api_key: str | None = None,
     edge_threshold: int = 64,
+    style: str | None = None,
 ) -> Image.Image:
     """Generate a sticker with transparent background.
 
@@ -156,6 +161,7 @@ def create_sticker(
         input_images: Optional list of reference image paths.
         api_key: Optional Gemini API key (uses GEMINI_API_KEY env var if not provided).
         edge_threshold: Alpha threshold for edge cleanup (0-255).
+        style: Optional style preset name (e.g., "kawaii", "minimal", "3d").
 
     Returns:
         PIL Image with transparent background.
@@ -165,6 +171,7 @@ def create_sticker(
         aspect_ratio=aspect_ratio,
         input_images=input_images,
         api_key=api_key,
+        style=style,
     )
 
     if save_raw and output:
