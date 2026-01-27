@@ -6,16 +6,17 @@ from sticker_generator.image_processing import (
     remove_green_screen_aggressive,
     remove_green_screen_hsv,
 )
-from sticker_generator.styles import (
-    STYLE_PRESETS,
-    StylePreset,
-    get_available_styles,
-    get_style,
 from sticker_generator.sheet import (
     SheetResult,
     calculate_grid_layout,
     create_sheet_image,
     generate_sticker_sheet,
+)
+from sticker_generator.styles import (
+    STYLE_PRESETS,
+    StylePreset,
+    get_available_styles,
+    get_style,
 )
 
 __version__ = "0.2.0"

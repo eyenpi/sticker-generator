@@ -115,7 +115,8 @@ class TestCreateSheetImage:
         stickers = [self.create_test_sticker()]
         sheet = create_sheet_image(stickers, padding=10)
         # Check corner pixel is transparent
-        assert sheet.getpixel((0, 0))[3] == 0
+        pixel = sheet.getpixel((0, 0))
+        assert isinstance(pixel, tuple) and pixel[3] == 0
 
     def test_custom_background_color(self):
         stickers = [self.create_test_sticker()]
@@ -123,7 +124,8 @@ class TestCreateSheetImage:
             stickers, padding=10, background_color=(255, 255, 255, 255)
         )
         # Check corner pixel is white
-        assert sheet.getpixel((0, 0)) == (255, 255, 255, 255)
+        pixel = sheet.getpixel((0, 0))
+        assert pixel == (255, 255, 255, 255)
 
     def test_rgb_sticker_converted(self):
         sticker = Image.new("RGB", (100, 100), (255, 0, 0))
@@ -245,6 +247,7 @@ class TestGenerateStickerSheet:
             input_images=None,
             api_key="test-key",
             edge_threshold=128,
+            style=None,
         )
 
     @patch("sticker_generator.sheet.create_sticker")
