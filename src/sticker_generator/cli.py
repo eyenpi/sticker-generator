@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from sticker_generator.core import create_sticker
+from sticker_generator.styles import get_available_styles
 
 
 def main() -> int:
@@ -52,6 +53,13 @@ def main() -> int:
         "--api-key",
         help="Gemini API key (or set GEMINI_API_KEY environment variable)",
     )
+    parser.add_argument(
+        "-s",
+        "--style",
+        choices=get_available_styles(),
+        metavar="STYLE",
+        help="Style preset: " + ", ".join(get_available_styles()),
+    )
 
     args = parser.parse_args()
 
@@ -66,6 +74,8 @@ def main() -> int:
         print(f"Generating sticker: {args.prompt}")
         if args.images:
             print(f"Using {len(args.images)} reference image(s)")
+        if args.style:
+            print(f"Using style: {args.style}")
 
         create_sticker(
             prompt=args.prompt,
@@ -75,6 +85,7 @@ def main() -> int:
             input_images=args.images,
             api_key=args.api_key,
             edge_threshold=args.edge_threshold,
+            style=args.style,
         )
 
         print(f"Sticker saved to: {args.output}")

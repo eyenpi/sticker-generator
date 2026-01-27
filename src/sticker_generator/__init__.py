@@ -6,6 +6,12 @@ from sticker_generator.image_processing import (
     remove_green_screen_aggressive,
     remove_green_screen_hsv,
 )
+from sticker_generator.styles import (
+    STYLE_PRESETS,
+    StylePreset,
+    get_available_styles,
+    get_style,
+)
 
 __version__ = "0.2.0"
 __all__ = [
@@ -14,4 +20,8 @@ __all__ = [
     "remove_green_screen_hsv",
     "remove_green_screen_aggressive",
     "cleanup_edges",
+    "STYLE_PRESETS",
+    "StylePreset",
+    "get_available_styles",
+    "get_style",
 ]
