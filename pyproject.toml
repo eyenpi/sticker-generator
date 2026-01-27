@@ -4,18 +4,16 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sticker-generator"
-version = "0.3.0"
+version = "0.3.1"
 description = "Generate stickers with transparent backgrounds using Gemini AI"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
 authors = [
-    { name = "Ali" }
+    { name = "Eyenpi" }
 ]
-keywords = ["sticker", "gemini", "ai", "image-generation", "transparent-background"]
+keywords = ["sticker", "gemini", "ai", "image-generation"]
 classifiers = [
-    "Development Status :: 4 - Beta",
-    "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
@@ -44,9 +42,9 @@ dev = [
 sticker-generator = "sticker_generator.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/ali/sticker-generator"
-Repository = "https://github.com/ali/sticker-generator"
-Issues = "https://github.com/ali/sticker-generator/issues"
+Homepage = "https://github.com/eyenpi/sticker-generator"
+Repository = "https://github.com/eyenpi/sticker-generator"
+Issues = "https://github.com/eyenpi/sticker-generator/issues"
 
 [tool.hatch.build.targets.sdist]
 include = [
@@ -83,6 +81,9 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+filterwarnings = [
+    "ignore::DeprecationWarning:google.genai",
+]
 
 [tool.coverage.run]
 source = ["src/sticker_generator"]
