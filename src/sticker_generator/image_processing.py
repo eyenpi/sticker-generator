@@ -1,0 +1,171 @@
+"""Image processing utilities for green screen removal and edge cleanup."""
+
+from __future__ import annotations
+
+import numpy as np
+from PIL import Image
+
+
+def rgb_to_hsv_array(rgb_array: np.ndarray) -> np.ndarray:
+    """Convert RGB array to HSV array efficiently.
+
+    Args:
+        rgb_array: NumPy array of RGB values (H, W, 3).
+
+    Returns:
+        NumPy array of HSV values (H, W, 3) with H in [0, 360], S and V in [0, 100].
+    """
+    rgb_normalized = rgb_array.astype(np.float32) / 255.0
+    r, g, b = rgb_normalized[:, :, 0], rgb_normalized[:, :, 1], rgb_normalized[:, :, 2]
+
+    max_c = np.maximum(np.maximum(r, g), b)
+    min_c = np.minimum(np.minimum(r, g), b)
+    delta = max_c - min_c
+
+    h = np.zeros_like(max_c)
+    mask_r = (max_c == r) & (delta != 0)
+    h[mask_r] = (60 * ((g[mask_r] - b[mask_r]) / delta[mask_r]) + 360) % 360
+
+    mask_g = (max_c == g) & (delta != 0)
+    h[mask_g] = 60 * ((b[mask_g] - r[mask_g]) / delta[mask_g]) + 120
+
+    mask_b = (max_c == b) & (delta != 0)
+    h[mask_b] = 60 * ((r[mask_b] - g[mask_b]) / delta[mask_b]) + 240
+
+    s = np.zeros_like(max_c)
+    s[max_c != 0] = delta[max_c != 0] / max_c[max_c != 0]
+
+    v = max_c
+    return np.stack([h, s * 100, v * 100], axis=-1)
+
+
+def remove_green_screen_hsv(
+    image: Image.Image,
+    hue_center: float = 120,
+    hue_range: float = 25,
+    min_saturation: float = 75,
+    min_value: float = 70,
+    dilation_iterations: int = 2,
+    erosion_iterations: int = 0,
+) -> Image.Image:
+    """Remove green screen using HSV color space detection.
+
+    Args:
+        image: PIL Image to process.
+        hue_center: Center hue value for green (default 120 degrees).
+        hue_range: Tolerance around hue center in degrees.
+        min_saturation: Minimum saturation percentage to consider as green.
+        min_value: Minimum value/brightness percentage to consider as green.
+        dilation_iterations: Number of dilation passes to catch anti-aliased edges.
+        erosion_iterations: Number of erosion passes.
+
+    Returns:
+        PIL Image with green background removed (RGBA with transparency).
+    """
+    if image.mode != "RGBA":
+        image = image.convert("RGBA")
+
+    data = np.array(image)
+    rgb = data[:, :, :3]
+    hsv = rgb_to_hsv_array(rgb)
+    h, s, v = hsv[:, :, 0], hsv[:, :, 1], hsv[:, :, 2]
+
+    hue_diff = np.abs(h - hue_center)
+    hue_diff = np.minimum(hue_diff, 360 - hue_diff)
+
+    green_mask = (hue_diff < hue_range) & (s > min_saturation) & (v > min_value)
+
+    if dilation_iterations > 0 or erosion_iterations > 0:
+        from scipy import ndimage
+
+        if dilation_iterations > 0:
+            green_mask = ndimage.binary_dilation(
+                green_mask, iterations=dilation_iterations
+            )
+        if erosion_iterations > 0:
+            green_mask = ndimage.binary_erosion(
+                green_mask, iterations=erosion_iterations
+            )
+
+    alpha = data[:, :, 3].copy()
+    alpha[green_mask] = 0
+    data[:, :, 3] = alpha
+
+    return Image.fromarray(data)
+
+
+def remove_green_screen_aggressive(
+    image: Image.Image,
+    green_threshold: float = 1.2,
+    edge_pixels: int = 0,
+) -> Image.Image:
+    """Aggressive green removal detecting dominant green pixels.
+
+    This method catches darker greens and tinted shadows that HSV might miss.
+
+    Args:
+        image: PIL Image to process.
+        green_threshold: Ratio threshold for green channel dominance.
+        edge_pixels: Number of dilation iterations for edge expansion.
+
+    Returns:
+        PIL Image with green background removed (RGBA with transparency).
+    """
+    if image.mode != "RGBA":
+        image = image.convert("RGBA")
+
+    data = np.array(image)
+    r = data[:, :, 0].astype(float)
+    g = data[:, :, 1].astype(float)
+    b = data[:, :, 2].astype(float)
+
+    rb_max = np.maximum(r, b) + 1
+    green_ratio = g / rb_max
+    green_dominant = (g > r) & (g > b)
+    green_mask = (green_ratio > green_threshold) & green_dominant
+
+    if edge_pixels > 0:
+        from scipy import ndimage
+
+        green_mask = ndimage.binary_dilation(green_mask, iterations=edge_pixels)
+
+    alpha = data[:, :, 3].copy()
+    alpha[green_mask] = 0
+    data[:, :, 3] = alpha
+
+    return Image.fromarray(data)
+
+
+def cleanup_edges(image: Image.Image, threshold: int = 128) -> Image.Image:
+    """Clean up semi-transparent edge pixels by thresholding alpha.
+
+    Args:
+        image: PIL Image to process.
+        threshold: Alpha values below this become fully transparent,
+                   values at or above become fully opaque.
+
+    Returns:
+        PIL Image with cleaned edges.
+    """
+    if image.mode != "RGBA":
+        return image
+
+    data = np.array(image)
+    alpha = data[:, :, 3]
+    alpha[alpha < threshold] = 0
+    alpha[alpha >= threshold] = 255
+
+    data[:, :, 3] = alpha
+    return Image.fromarray(data)
+
+
+def save_transparent_png(image: Image.Image, filename: str) -> None:
+    """Save image as PNG with transparency preserved.
+
+    Args:
+        image: PIL Image to save.
+        filename: Output filename.
+    """
+    if image.mode != "RGBA":
+        image = image.convert("RGBA")
+    image.save(filename, "PNG")

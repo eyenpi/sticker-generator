@@ -1,0 +1,199 @@
+"""Core sticker generation functionality using Gemini AI."""
+
+from __future__ import annotations
+
+import base64
+import io
+import mimetypes
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+from google import genai
+from PIL import Image
+
+from sticker_generator.image_processing import (
+    cleanup_edges,
+    remove_green_screen_aggressive,
+    remove_green_screen_hsv,
+    save_transparent_png,
+)
+
+if TYPE_CHECKING:
+    from os import PathLike
+
+MODEL_ID = "gemini-2.5-flash-image"
+
+# fmt: off
+# ruff: noqa: E501
+CHROMAKEY_PROMPT_TEMPLATE = """Create a sticker illustration of: {prompt}
+
+CRITICAL CHROMAKEY REQUIREMENTS:
+1. BACKGROUND: Solid, flat, uniform chromakey green color. Use EXACTLY hex color #00FF00 (RGB 0, 255, 0).
+   The entire background must be this single pure green color with NO variation, NO gradients, NO shadows, NO lighting effects.
+
+2. WHITE OUTLINE: The subject MUST have a clean white outline/border (2-3 pixels wide) separating it from the green background.
+   This white border prevents color bleeding between the subject and background.
+
+3. NO GREEN ON SUBJECT: The subject itself should NOT contain any green colors to avoid confusion with the chromakey.
+   If the subject needs green (like leaves), use a distinctly different shade like dark forest green or teal.
+
+4. SHARP EDGES: The subject should have crisp, sharp, well-defined edges - no soft or blurry boundaries.
+
+5. CENTERED: Subject should be centered with padding around all sides.
+
+6. STYLE: Vibrant, clean, cartoon/illustration sticker style with bold colors.
+
+This is for chromakey extraction - the green background will be removed programmatically."""
+# fmt: on
+
+
+def decode_image(data: str | bytes) -> Image.Image:
+    """Decode image data to PIL Image.
+
+    Args:
+        data: Base64-encoded string or raw bytes.
+
+    Returns:
+        PIL Image object.
+    """
+    if isinstance(data, str):
+        image_bytes = base64.b64decode(data)
+    else:
+        image_bytes = data
+    return Image.open(io.BytesIO(image_bytes))
+
+
+def load_image_as_content(image_path: str | PathLike) -> genai.types.Part:
+    """Load an image file and return as API content block.
+
+    Args:
+        image_path: Path to the image file.
+
+    Returns:
+        Part formatted for Gemini API content.
+    """
+    path = Path(image_path)
+    mime_type, _ = mimetypes.guess_type(str(path))
+    if mime_type is None:
+        mime_type = "image/jpeg"
+
+    with open(path, "rb") as f:
+        image_data = f.read()
+
+    return genai.types.Part.from_bytes(data=image_data, mime_type=mime_type)
+
+
+def generate_sticker(
+    prompt: str,
+    aspect_ratio: str = "1:1",
+    input_images: list[str | PathLike] | None = None,
+    api_key: str | None = None,
+) -> Image.Image:
+    """Generate a sticker image with chromakey green background.
+
+    Args:
+        prompt: Description of the sticker to generate.
+        aspect_ratio: Image aspect ratio (default "1:1").
+        input_images: Optional list of reference image paths.
+        api_key: Optional Gemini API key (uses GEMINI_API_KEY env var if not provided).
+
+    Returns:
+        PIL Image with green background (before processing).
+
+    Raises:
+        ValueError: If no image was generated.
+    """
+    client = genai.Client(api_key=api_key) if api_key else genai.Client()
+
+    enhanced_prompt = CHROMAKEY_PROMPT_TEMPLATE.format(prompt=prompt)
+
+    input_content: str | list = enhanced_prompt
+    if input_images:
+        content_list: list = []
+        for img_path in input_images:
+            content_list.append(load_image_as_content(img_path))
+        content_list.append(enhanced_prompt)
+        input_content = content_list
+
+    response = client.models.generate_content(
+        model=MODEL_ID,
+        contents=input_content,
+        config=genai.types.GenerateContentConfig(
+            response_modalities=["TEXT", "IMAGE"],
+        ),
+    )
+
+    if response.candidates:
+        for part in response.candidates[0].content.parts:  # type: ignore[union-attr]
+            if part.inline_data is not None:
+                print(f"Found image: mime_type={part.inline_data.mime_type}")
+                return decode_image(part.inline_data.data)  # type: ignore[arg-type]
+            elif part.text:
+                print(f"Text response: {part.text[:200]}...")
+
+    raise ValueError("No image was generated")
+
+
+def create_sticker(
+    prompt: str,
+    output: str | PathLike | None = None,
+    aspect_ratio: str = "1:1",
+    save_raw: bool = False,
+    input_images: list[str | PathLike] | None = None,
+    api_key: str | None = None,
+    edge_threshold: int = 64,
+) -> Image.Image:
+    """Generate a sticker with transparent background.
+
+    Complete workflow: generates image with green background, removes green,
+    cleans edges, and optionally saves to file.
+
+    Args:
+        prompt: Description of the sticker to generate.
+        output: Optional output filename (PNG recommended).
+        aspect_ratio: Image aspect ratio (default "1:1").
+        save_raw: If True, save the raw image before processing.
+        input_images: Optional list of reference image paths.
+        api_key: Optional Gemini API key (uses GEMINI_API_KEY env var if not provided).
+        edge_threshold: Alpha threshold for edge cleanup (0-255).
+
+    Returns:
+        PIL Image with transparent background.
+    """
+    raw_image = generate_sticker(
+        prompt=prompt,
+        aspect_ratio=aspect_ratio,
+        input_images=input_images,
+        api_key=api_key,
+    )
+
+    if save_raw and output:
+        output_path = Path(output)
+        raw_filename = output_path.with_stem(output_path.stem + "_raw")
+        raw_image.save(raw_filename)
+
+    # HSV-based green removal (permissive settings for various green shades)
+    transparent_image = remove_green_screen_hsv(
+        raw_image,
+        hue_center=115,
+        hue_range=35,
+        min_saturation=25,
+        min_value=40,
+        dilation_iterations=2,
+        erosion_iterations=0,
+    )
+
+    # Second pass: aggressive removal for remaining greens
+    transparent_image = remove_green_screen_aggressive(
+        transparent_image,
+        green_threshold=1.1,
+        edge_pixels=1,
+    )
+
+    # Edge cleanup
+    transparent_image = cleanup_edges(transparent_image, threshold=edge_threshold)
+
+    if output:
+        save_transparent_png(transparent_image, str(output))
+
+    return transparent_image
