@@ -11,6 +11,11 @@ from sticker_generator.styles import (
     StylePreset,
     get_available_styles,
     get_style,
+from sticker_generator.sheet import (
+    SheetResult,
+    calculate_grid_layout,
+    create_sheet_image,
+    generate_sticker_sheet,
 )
 
 __version__ = "0.2.0"
@@ -24,4 +29,8 @@ __all__ = [
     "StylePreset",
     "get_available_styles",
     "get_style",
+    "generate_sticker_sheet",
+    "create_sheet_image",
+    "calculate_grid_layout",
+    "SheetResult",
 ]

@@ -41,6 +41,19 @@ sticker-generator "a space astronaut" -s 3d -o astronaut.png
 
 # Save raw image before processing
 sticker-generator "a dog" --save-raw
+
+# Generate multiple variations as a sheet
+sticker-generator "happy cat" -n 4 --sheet -o cat_sheet.png
+
+# Generate variations as individual files
+sticker-generator "cute dog" -n 6 -o dog.png
+# Creates: dog_1.png, dog_2.png, ..., dog_6.png
+
+# Sheet with custom grid (3 columns)
+sticker-generator "star" -n 9 --sheet --columns 3 -o stars.png
+
+# Sheet + individual files
+sticker-generator "robot" -n 4 --sheet --save-individuals -o robots.png
 ```
 
 #### Available Styles
@@ -87,6 +100,38 @@ sticker = create_sticker(
 sticker = create_sticker(
     prompt="a rocket ship",
     output=None  # Returns PIL Image
+)
+```
+
+### Sticker Sheets
+
+Generate multiple variations and combine into a grid:
+
+```python
+from sticker_generator import generate_sticker_sheet
+
+# Generate 4 variations as a sheet
+result = generate_sticker_sheet(
+    prompt="happy cat",
+    variations=4,
+    output="cat_sheet.png"
+)
+
+# Access individual stickers
+for i, sticker in enumerate(result.stickers):
+    sticker.save(f"cat_{i}.png")
+
+# Check for failures
+if result.failed_indices:
+    print(f"Failed variations: {result.failed_indices}")
+
+# Custom grid layout
+result = generate_sticker_sheet(
+    prompt="star",
+    variations=6,
+    output="stars.png",
+    columns=3,      # 3x2 grid
+    padding=20      # 20px between stickers
 )
 ```
 

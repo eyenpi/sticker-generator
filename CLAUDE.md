@@ -5,24 +5,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build and Development Commands
 
 ```bash
-# Install in development mode
-pip install -e ".[dev]"
+# Install dependencies (uses uv)
+uv sync
 
 # Run tests
-pytest
+uv run pytest
 
 # Run single test
-pytest tests/test_image_processing.py::TestRemoveGreenScreenHsv::test_removes_green_background
+uv run pytest tests/test_image_processing.py::TestRemoveGreenScreenHsv::test_removes_green_background
 
 # Lint and format
-ruff check src tests
-ruff format src tests
+uv run ruff check src tests
+uv run ruff format src tests
 
 # Type check
-mypy src
+uv run mypy src
 
 # Build package
-python -m build
+uv build
 ```
 
 ## Architecture
@@ -37,7 +37,8 @@ Key modules:
 - `core.py`: Gemini API interaction, prompt engineering, main `create_sticker()` function
 - `image_processing.py`: Pure image processing (no API calls), HSV conversion, green removal, edge cleanup
 - `styles.py`: Style presets that modify prompts (kawaii, minimal, 3d, pixel-art, retro, watercolor)
-- `cli.py`: Command-line interface wrapping `create_sticker()`
+- `sheet.py`: Sticker sheet generation - multiple variations combined into a grid
+- `cli.py`: Command-line interface wrapping `create_sticker()` and `generate_sticker_sheet()`
 
 ## CI/CD
 

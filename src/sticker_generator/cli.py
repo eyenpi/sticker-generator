@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from sticker_generator.core import create_sticker
+from sticker_generator.sheet import generate_sticker_sheet
 from sticker_generator.styles import get_available_styles
 
 
@@ -54,6 +55,35 @@ def main() -> int:
         help="Gemini API key (or set GEMINI_API_KEY environment variable)",
     )
     parser.add_argument(
+        "-n",
+        "--variations",
+        type=int,
+        default=1,
+        help="Number of sticker variations to generate (default: 1)",
+    )
+    parser.add_argument(
+        "--sheet",
+        action="store_true",
+        help="Combine variations into a single sheet image",
+    )
+    parser.add_argument(
+        "--save-individuals",
+        action="store_true",
+        help="Save individual stickers when generating a sheet",
+    )
+    parser.add_argument(
+        "--columns",
+        type=int,
+        default=None,
+        help="Number of columns in sheet grid (auto-calculated if not specified)",
+    )
+    parser.add_argument(
+        "--padding",
+        type=int,
+        default=10,
+        help="Padding between stickers in sheet (default: 10 pixels)",
+    )
+    parser.add_argument(
         "-s",
         "--style",
         choices=get_available_styles(),
@@ -77,18 +107,46 @@ def main() -> int:
         if args.style:
             print(f"Using style: {args.style}")
 
-        create_sticker(
-            prompt=args.prompt,
-            output=args.output,
-            aspect_ratio=args.aspect_ratio,
-            save_raw=args.save_raw,
-            input_images=args.images,
-            api_key=args.api_key,
-            edge_threshold=args.edge_threshold,
-            style=args.style,
-        )
+        if args.variations > 1:
+            print(f"Generating {args.variations} variations...")
+            result = generate_sticker_sheet(
+                prompt=args.prompt,
+                variations=args.variations,
+                output=args.output if args.sheet else None,
+                save_individuals=args.save_individuals or not args.sheet,
+                individual_prefix=Path(args.output).stem if not args.sheet else None,
+                aspect_ratio=args.aspect_ratio,
+                input_images=args.images,
+                api_key=args.api_key,
+                edge_threshold=args.edge_threshold,
+                columns=args.columns,
+                padding=args.padding,
+                style=args.style,
+            )
 
-        print(f"Sticker saved to: {args.output}")
+            if result.failed_indices:
+                print(f"Warning: {len(result.failed_indices)} variation(s) failed")
+
+            if args.sheet:
+                print(f"Sheet saved to: {args.output}")
+                if args.save_individuals:
+                    prefix = Path(args.output).stem
+                    print(f"Individual stickers saved with prefix: {prefix}")
+            else:
+                print(f"Stickers saved with prefix: {Path(args.output).stem}")
+        else:
+            create_sticker(
+                prompt=args.prompt,
+                output=args.output,
+                aspect_ratio=args.aspect_ratio,
+                save_raw=args.save_raw,
+                input_images=args.images,
+                api_key=args.api_key,
+                edge_threshold=args.edge_threshold,
+                style=args.style,
+            )
+            print(f"Sticker saved to: {args.output}")
+
         return 0
 
     except Exception as e:
