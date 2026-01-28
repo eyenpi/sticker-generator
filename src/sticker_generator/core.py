@@ -15,6 +15,7 @@ from sticker_generator.image_processing import (
     cleanup_edges,
     remove_green_screen_aggressive,
     remove_green_screen_hsv,
+    resize_image,
     save_transparent_png,
 )
 from sticker_generator.styles import format_prompt_with_style
@@ -147,11 +148,13 @@ def create_sticker(
     api_key: str | None = None,
     edge_threshold: int = 64,
     style: str | None = None,
+    resize: tuple[int, int] | None = None,
+    resize_exact: bool = False,
 ) -> Image.Image:
     """Generate a sticker with transparent background.
 
     Complete workflow: generates image with green background, removes green,
-    cleans edges, and optionally saves to file.
+    cleans edges, optionally resizes, and optionally saves to file.
 
     Args:
         prompt: Description of the sticker to generate.
@@ -162,6 +165,8 @@ def create_sticker(
         api_key: Optional Gemini API key (uses GEMINI_API_KEY env var if not provided).
         edge_threshold: Alpha threshold for edge cleanup (0-255).
         style: Optional style preset name (e.g., "kawaii", "minimal", "3d").
+        resize: Optional target size as (width, height) to resize the output.
+        resize_exact: If True, force exact dimensions (may distort). Default maintains aspect ratio.
 
     Returns:
         PIL Image with transparent background.
@@ -199,6 +204,12 @@ def create_sticker(
 
     # Edge cleanup
     transparent_image = cleanup_edges(transparent_image, threshold=edge_threshold)
+
+    # Optional resize
+    if resize is not None:
+        transparent_image = resize_image(
+            transparent_image, resize, maintain_aspect=not resize_exact
+        )
 
     if output:
         save_transparent_png(transparent_image, str(output))

@@ -5,6 +5,7 @@ from sticker_generator.image_processing import (
     cleanup_edges,
     remove_green_screen_aggressive,
     remove_green_screen_hsv,
+    resize_image,
 )
 from sticker_generator.sheet import (
     SheetResult,
@@ -25,6 +26,7 @@ __all__ = [
     "remove_green_screen_hsv",
     "remove_green_screen_aggressive",
     "cleanup_edges",
+    "resize_image",
     "STYLE_PRESETS",
     "StylePreset",
     "get_available_styles",

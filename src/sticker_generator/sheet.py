@@ -116,6 +116,8 @@ def generate_sticker_sheet(
     delay_between_requests: float = 0.5,
     max_retries: int = 2,
     style: str | None = None,
+    resize: tuple[int, int] | None = None,
+    resize_exact: bool = False,
 ) -> SheetResult:
     """Generate multiple sticker variations and combine into a sheet.
 
@@ -134,6 +136,8 @@ def generate_sticker_sheet(
         delay_between_requests: Seconds to wait between API calls.
         max_retries: Number of retries for failed generations.
         style: Optional style for the stickers.
+        resize: Optional target size as (width, height) to resize each sticker.
+        resize_exact: If True, force exact dimensions (may distort).
 
     Returns:
         SheetResult with stickers, sheet image, and failed indices.
@@ -155,6 +159,8 @@ def generate_sticker_sheet(
                     api_key=api_key,
                     edge_threshold=edge_threshold,
                     style=style,
+                    resize=resize,
+                    resize_exact=resize_exact,
                 )
                 stickers.append(sticker)
                 print(f"Generated variation {i + 1}/{variations}")
