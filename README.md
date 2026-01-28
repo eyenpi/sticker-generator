@@ -54,6 +54,11 @@ sticker-generator "star" -n 9 --sheet --columns 3 -o stars.png
 
 # Sheet + individual files
 sticker-generator "robot" -n 4 --sheet --save-individuals -o robots.png
+
+# Resize output to specific dimensions
+sticker-generator "cute cat" --resize 512          # 512x512 square
+sticker-generator "cute cat" --resize 512x256      # Fit within 512x256, maintain aspect ratio
+sticker-generator "cute cat" --resize 512x256 --resize-exact  # Force exact dimensions (may distort)
 ```
 
 #### Available Styles
@@ -101,6 +106,21 @@ sticker = create_sticker(
     prompt="a rocket ship",
     output=None  # Returns PIL Image
 )
+
+# Resize output
+sticker = create_sticker(
+    prompt="a cute cat",
+    output="cat_small.png",
+    resize=(256, 256)  # Fit within 256x256, maintain aspect ratio
+)
+
+# Force exact dimensions (may distort)
+sticker = create_sticker(
+    prompt="a cute cat",
+    output="cat_exact.png",
+    resize=(512, 256),
+    resize_exact=True
+)
 ```
 
 ### Sticker Sheets
@@ -141,7 +161,7 @@ If you have your own green-screen images:
 
 ```python
 from PIL import Image
-from sticker_generator import remove_green_screen_hsv, cleanup_edges
+from sticker_generator import remove_green_screen_hsv, cleanup_edges, resize_image
 
 # Load your image
 img = Image.open("green_background.png")
@@ -152,8 +172,12 @@ transparent = remove_green_screen_hsv(img)
 # Clean up edges
 clean = cleanup_edges(transparent, threshold=64)
 
+# Optional: resize the result
+resized = resize_image(clean, (256, 256))  # Fit within bounds, maintain aspect ratio
+resized = resize_image(clean, (256, 256), maintain_aspect=False)  # Force exact size
+
 # Save
-clean.save("transparent.png")
+resized.save("transparent.png")
 ```
 
 ## How It Works
@@ -162,6 +186,7 @@ clean.save("transparent.png")
 2. **Generation**: Uses Gemini AI to generate an image with a chromakey green (#00FF00) background
 3. **Green Removal**: Converts to HSV color space and removes pixels matching green hue
 4. **Edge Cleanup**: Removes semi-transparent edge artifacts for clean results
+5. **Resize** (optional): Resizes output to specified dimensions using LANCZOS resampling
 
 ## License
 

@@ -248,6 +248,8 @@ class TestGenerateStickerSheet:
             api_key="test-key",
             edge_threshold=128,
             style=None,
+            resize=None,
+            resize_exact=False,
         )
 
     @patch("sticker_generator.sheet.create_sticker")
@@ -273,3 +275,27 @@ class TestGenerateStickerSheet:
         assert result.sheet is not None
         # 1 sticker with 20px padding on all sides
         assert result.sheet.size == (140, 140)
+
+    @patch("sticker_generator.sheet.create_sticker")
+    def test_resize_passed_to_create_sticker(self, mock_create):
+        mock_create.return_value = Image.new("RGBA", (50, 50))
+
+        generate_sticker_sheet(
+            "test prompt",
+            variations=1,
+            resize=(256, 256),
+            resize_exact=True,
+            delay_between_requests=0,
+        )
+
+        mock_create.assert_called_once_with(
+            prompt="test prompt",
+            output=None,
+            aspect_ratio="1:1",
+            input_images=None,
+            api_key=None,
+            edge_threshold=64,
+            style=None,
+            resize=(256, 256),
+            resize_exact=True,
+        )
