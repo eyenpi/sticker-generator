@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from sticker_generator.core import create_sticker
+from sticker_generator.formats import get_available_formats
 from sticker_generator.sheet import generate_sticker_sheet
 from sticker_generator.styles import get_available_styles
 
@@ -136,6 +137,32 @@ def main() -> int:
         help="Style preset: " + ", ".join(get_available_styles()),
     )
     parser.add_argument(
+        "-f",
+        "--format",
+        choices=get_available_formats(),
+        metavar="FORMAT",
+        help="Output format: "
+        + ", ".join(get_available_formats())
+        + " (default: auto-detect from filename)",
+    )
+    parser.add_argument(
+        "-q",
+        "--quality",
+        type=int,
+        metavar="1-100",
+        help="Quality for lossy formats (1-100, higher is better)",
+    )
+    parser.add_argument(
+        "--lossless",
+        action="store_true",
+        help="Force lossless compression",
+    )
+    parser.add_argument(
+        "--lossy",
+        action="store_true",
+        help="Force lossy compression",
+    )
+    parser.add_argument(
         "--resize",
         type=parse_resize_arg,
         metavar="SIZE",
@@ -148,6 +175,23 @@ def main() -> int:
     )
 
     args = parser.parse_args()
+
+    # Validate quality range
+    if args.quality is not None and not (1 <= args.quality <= 100):
+        print("Error: Quality must be between 1 and 100", file=sys.stderr)
+        return 1
+
+    # Validate lossless/lossy flags are not both set
+    if args.lossless and args.lossy:
+        print("Error: Cannot specify both --lossless and --lossy", file=sys.stderr)
+        return 1
+
+    # Determine lossless setting
+    lossless: bool | None = None
+    if args.lossless:
+        lossless = True
+    elif args.lossy:
+        lossless = False
 
     # Validate reference images exist
     if args.images:
@@ -178,6 +222,9 @@ def main() -> int:
                 columns=args.columns,
                 padding=args.padding,
                 style=args.style,
+                output_format=args.format,
+                quality=args.quality,
+                lossless=lossless,
                 resize=args.resize,
                 resize_exact=args.resize_exact,
             )
@@ -202,6 +249,9 @@ def main() -> int:
                 api_key=args.api_key,
                 edge_threshold=args.edge_threshold,
                 style=args.style,
+                output_format=args.format,
+                quality=args.quality,
+                lossless=lossless,
                 resize=args.resize,
                 resize_exact=args.resize_exact,
             )

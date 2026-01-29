@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 from PIL import Image
+
+from sticker_generator.formats import OutputFormat, format_from_extension, get_format
 
 
 def rgb_to_hsv_array(rgb_array: np.ndarray) -> np.ndarray:
@@ -198,13 +202,64 @@ def resize_image(
         return image.resize((width, height), resampling)
 
 
+def _resolve_format(
+    output_format: OutputFormat | str | None,
+    filename: str,
+) -> OutputFormat:
+    """Resolve format from various input types.
+
+    Args:
+        output_format: OutputFormat instance, preset name, or None.
+        filename: Filename to detect format from if output_format is None.
+
+    Returns:
+        Resolved OutputFormat.
+    """
+    if output_format is None:
+        return format_from_extension(filename)
+    if isinstance(output_format, str):
+        return get_format(output_format)
+    return output_format
+
+
+def save_transparent_image(
+    image: Image.Image,
+    filename: str,
+    output_format: OutputFormat | str | None = None,
+) -> None:
+    """Save image with transparency in specified format.
+
+    Auto-detects format from extension if output_format is None.
+
+    Args:
+        image: PIL Image to save.
+        filename: Output filename.
+        output_format: OutputFormat instance, preset name (e.g., "png", "webp"),
+            or None to auto-detect from filename extension.
+    """
+    if image.mode != "RGBA":
+        image = image.convert("RGBA")
+
+    fmt = _resolve_format(output_format, filename)
+    save_params = fmt.get_save_params()
+    image.save(filename, fmt.pil_format, **save_params)
+
+
 def save_transparent_png(image: Image.Image, filename: str) -> None:
     """Save image as PNG with transparency preserved.
+
+    .. deprecated::
+        Use :func:`save_transparent_image` instead.
 
     Args:
         image: PIL Image to save.
         filename: Output filename.
     """
+    warnings.warn(
+        "save_transparent_png is deprecated, use save_transparent_image instead",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     if image.mode != "RGBA":
         image = image.convert("RGBA")
     image.save(filename, "PNG")

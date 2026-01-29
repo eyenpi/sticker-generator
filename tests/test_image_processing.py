@@ -1,15 +1,20 @@
 """Tests for image processing utilities."""
 
+import warnings
+
 import numpy as np
 import pytest
 from PIL import Image
 
+from sticker_generator.formats import OutputFormat, OutputFormatType
 from sticker_generator.image_processing import (
     cleanup_edges,
     remove_green_screen_aggressive,
     remove_green_screen_hsv,
     resize_image,
     rgb_to_hsv_array,
+    save_transparent_image,
+    save_transparent_png,
 )
 
 
@@ -197,3 +202,189 @@ class TestResizeImage:
         result = resize_image(img, (50, 50))
         assert result.mode == "RGB"
         assert result.size == (50, 50)
+
+
+def create_transparent_test_image(width: int = 50, height: int = 50) -> Image.Image:
+    """Create a test image with transparent and opaque regions."""
+    img = Image.new("RGBA", (width, height), (0, 0, 0, 0))  # Fully transparent
+    # Add a red opaque square in the center
+    for x in range(15, 35):
+        for y in range(15, 35):
+            img.putpixel((x, y), (255, 0, 0, 255))
+    return img
+
+
+class TestSaveTransparentImage:
+    """Tests for save_transparent_image function."""
+
+    def test_save_png_preserves_transparency(self, tmp_path):
+        img = create_transparent_test_image()
+        output_path = tmp_path / "test.png"
+
+        save_transparent_image(img, str(output_path))
+
+        loaded = Image.open(output_path)
+        assert loaded.mode == "RGBA"
+        # Check transparent corner
+        assert loaded.getpixel((0, 0))[3] == 0
+        # Check opaque center
+        assert loaded.getpixel((25, 25))[3] == 255
+
+    def test_save_webp_lossless_preserves_transparency(self, tmp_path):
+        img = create_transparent_test_image()
+        output_path = tmp_path / "test.webp"
+
+        save_transparent_image(img, str(output_path), "webp")
+
+        loaded = Image.open(output_path)
+        assert loaded.mode == "RGBA"
+        # Check transparent corner
+        assert loaded.getpixel((0, 0))[3] == 0
+        # Check opaque center
+        assert loaded.getpixel((25, 25))[3] == 255
+
+    def test_save_webp_lossy_preserves_transparency(self, tmp_path):
+        img = create_transparent_test_image()
+        output_path = tmp_path / "test_lossy.webp"
+
+        save_transparent_image(img, str(output_path), "webp-lossy")
+
+        loaded = Image.open(output_path)
+        assert loaded.mode == "RGBA"
+        # Lossy compression may have slight variations but transparency preserved
+        # Check transparent corner (should still be transparent)
+        assert loaded.getpixel((0, 0))[3] < 10
+        # Check opaque center (should still be opaque)
+        assert loaded.getpixel((25, 25))[3] > 245
+
+    def test_auto_detect_format_from_extension_png(self, tmp_path):
+        img = create_transparent_test_image()
+        output_path = tmp_path / "test.png"
+
+        save_transparent_image(img, str(output_path))
+
+        # Verify it's actually a PNG
+        loaded = Image.open(output_path)
+        assert loaded.format == "PNG"
+
+    def test_auto_detect_format_from_extension_webp(self, tmp_path):
+        img = create_transparent_test_image()
+        output_path = tmp_path / "test.webp"
+
+        save_transparent_image(img, str(output_path))
+
+        # Verify it's actually a WebP
+        loaded = Image.open(output_path)
+        assert loaded.format == "WEBP"
+
+    def test_explicit_format_overrides_extension(self, tmp_path):
+        img = create_transparent_test_image()
+        # Extension says PNG but we specify WebP
+        output_path = tmp_path / "test.png"
+
+        save_transparent_image(img, str(output_path), "webp")
+
+        # File should be WebP despite .png extension
+        loaded = Image.open(output_path)
+        assert loaded.format == "WEBP"
+
+    def test_converts_rgb_to_rgba(self, tmp_path):
+        img = Image.new("RGB", (50, 50), (255, 0, 0))
+        output_path = tmp_path / "test.png"
+
+        save_transparent_image(img, str(output_path))
+
+        loaded = Image.open(output_path)
+        assert loaded.mode == "RGBA"
+
+    def test_invalid_format_raises_error(self, tmp_path):
+        img = create_transparent_test_image()
+        output_path = tmp_path / "test.png"
+
+        with pytest.raises(ValueError, match="Unknown format"):
+            save_transparent_image(img, str(output_path), "invalid")
+
+    def test_custom_quality_applied(self, tmp_path):
+        img = create_transparent_test_image()
+        output_path = tmp_path / "test.webp"
+
+        # Low quality should result in smaller file
+        fmt_low = OutputFormat(
+            format_type=OutputFormatType.WEBP,
+            lossless=False,
+            quality=10,
+        )
+        save_transparent_image(img, str(output_path), fmt_low)
+        size_low = output_path.stat().st_size
+
+        # High quality should result in larger file
+        output_path_high = tmp_path / "test_high.webp"
+        fmt_high = OutputFormat(
+            format_type=OutputFormatType.WEBP,
+            lossless=False,
+            quality=100,
+        )
+        save_transparent_image(img, str(output_path_high), fmt_high)
+        size_high = output_path_high.stat().st_size
+
+        # Higher quality should generally result in larger file
+        # (for lossy compression)
+        assert size_high >= size_low
+
+    def test_lossless_override(self, tmp_path):
+        img = create_transparent_test_image()
+        output_path = tmp_path / "test.webp"
+
+        fmt = OutputFormat(
+            format_type=OutputFormatType.WEBP,
+            lossless=True,
+        )
+        save_transparent_image(img, str(output_path), fmt)
+
+        loaded = Image.open(output_path)
+        # Lossless should preserve exact pixel values
+        data = np.array(loaded)
+        assert data[0, 0, 3] == 0  # Exact transparent
+        assert data[25, 25, 0] == 255  # Exact red value
+        assert data[25, 25, 3] == 255  # Exact opaque
+
+    def test_output_format_object(self, tmp_path):
+        img = create_transparent_test_image()
+        output_path = tmp_path / "test.png"
+
+        fmt = OutputFormat(format_type=OutputFormatType.PNG)
+        save_transparent_image(img, str(output_path), fmt)
+
+        loaded = Image.open(output_path)
+        assert loaded.format == "PNG"
+
+
+class TestSaveTransparentPngDeprecation:
+    """Tests for save_transparent_png deprecation."""
+
+    def test_deprecation_warning(self, tmp_path):
+        img = create_transparent_test_image()
+        output_path = tmp_path / "test.png"
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            save_transparent_png(img, str(output_path))
+
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            assert "save_transparent_image" in str(w[0].message)
+
+    def test_still_functions_correctly(self, tmp_path):
+        img = create_transparent_test_image()
+        output_path = tmp_path / "test.png"
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            save_transparent_png(img, str(output_path))
+
+        loaded = Image.open(output_path)
+        assert loaded.mode == "RGBA"
+        assert loaded.format == "PNG"
+        # Check transparency preserved
+        assert loaded.getpixel((0, 0))[3] == 0
+        assert loaded.getpixel((25, 25))[3] == 255
