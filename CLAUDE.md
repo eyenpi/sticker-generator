@@ -35,10 +35,20 @@ This package generates stickers with transparent backgrounds using Google's Gemi
 
 Key modules:
 - `core.py`: Gemini API interaction, prompt engineering, main `create_sticker()` function
-- `image_processing.py`: Pure image processing (no API calls), HSV conversion, green removal, edge cleanup
+- `image_processing.py`: Pure image processing (no API calls), HSV conversion, green removal, edge cleanup, `save_transparent_image()`
+- `formats.py`: Output format configuration (`OutputFormat` dataclass, presets for png/webp/webp-lossy)
 - `styles.py`: Style presets that modify prompts (kawaii, minimal, 3d, pixel-art, retro, watercolor)
 - `sheet.py`: Sticker sheet generation - multiple variations combined into a grid
 - `cli.py`: Command-line interface wrapping `create_sticker()` and `generate_sticker_sheet()`
+
+## Output Formats
+
+Supported formats (via `formats.py`):
+- `png` - Lossless PNG (default)
+- `webp` - Lossless WebP
+- `webp-lossy` - Lossy WebP (quality=90 default)
+
+Format is auto-detected from file extension, or can be explicitly specified via `output_format` parameter or `-f` CLI flag. The `save_transparent_image()` function handles all format-specific save parameters.
 
 ## CI/CD
 

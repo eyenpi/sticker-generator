@@ -10,8 +10,8 @@ from typing import TYPE_CHECKING
 
 from PIL import Image
 
-from sticker_generator.core import create_sticker
-from sticker_generator.image_processing import save_transparent_png
+from sticker_generator.core import _build_output_format, create_sticker
+from sticker_generator.image_processing import save_transparent_image
 
 if TYPE_CHECKING:
     from os import PathLike
@@ -116,13 +116,16 @@ def generate_sticker_sheet(
     delay_between_requests: float = 0.5,
     max_retries: int = 2,
     style: str | None = None,
+    output_format: str | None = None,
+    quality: int | None = None,
+    lossless: bool | None = None,
 ) -> SheetResult:
     """Generate multiple sticker variations and combine into a sheet.
 
     Args:
         prompt: Description of the sticker to generate.
         variations: Number of variations to generate.
-        output: Output filename for the sheet (PNG recommended).
+        output: Output filename for the sheet. Format auto-detected from extension.
         save_individuals: If True, save each sticker separately.
         individual_prefix: Prefix for individual sticker filenames.
         aspect_ratio: Image aspect ratio (default "1:1").
@@ -134,6 +137,10 @@ def generate_sticker_sheet(
         delay_between_requests: Seconds to wait between API calls.
         max_retries: Number of retries for failed generations.
         style: Optional style for the stickers.
+        output_format: Output format preset name ("png", "webp", "webp-lossy").
+            Auto-detected from filename extension if None.
+        quality: Quality for lossy formats (1-100). Overrides preset default.
+        lossless: Whether to use lossless compression. Overrides preset default.
 
     Returns:
         SheetResult with stickers, sheet image, and failed indices.
@@ -177,7 +184,8 @@ def generate_sticker_sheet(
         sheet = create_sheet_image(stickers, columns=columns, padding=padding)
 
         if output:
-            save_transparent_png(sheet, str(output))
+            fmt = _build_output_format(output_format, str(output), quality, lossless)
+            save_transparent_image(sheet, str(output), fmt)
 
     if save_individuals and stickers:
         if individual_prefix is None:
@@ -186,7 +194,26 @@ def generate_sticker_sheet(
             else:
                 individual_prefix = "sticker"
 
+        # Use same format for individuals as for sheet
+        if output:
+            fmt = _build_output_format(output_format, str(output), quality, lossless)
+        else:
+            # Default to PNG if no output specified
+            from sticker_generator.formats import get_format
+
+            fmt = get_format(output_format)
+            if quality is not None or lossless is not None:
+                from sticker_generator.formats import OutputFormat
+
+                fmt = OutputFormat(
+                    format_type=fmt.format_type,
+                    quality=quality if quality is not None else fmt.quality,
+                    lossless=lossless if lossless is not None else fmt.lossless,
+                    extra_params=fmt.extra_params,
+                )
+
         for i, sticker in enumerate(stickers):
-            save_transparent_png(sticker, f"{individual_prefix}_{i + 1}.png")
+            individual_filename = f"{individual_prefix}_{i + 1}{fmt.extension}"
+            save_transparent_image(sticker, individual_filename, fmt)
 
     return SheetResult(stickers=stickers, sheet=sheet, failed_indices=failed_indices)

@@ -198,7 +198,7 @@ class TestGenerateStickerSheet:
         assert result.sheet is not None
 
     @patch("sticker_generator.sheet.create_sticker")
-    @patch("sticker_generator.sheet.save_transparent_png")
+    @patch("sticker_generator.sheet.save_transparent_image")
     def test_saves_sheet_when_output_specified(self, mock_save, mock_create, tmp_path):
         mock_create.return_value = Image.new("RGBA", (100, 100))
         output_path = tmp_path / "sheet.png"
@@ -211,7 +211,7 @@ class TestGenerateStickerSheet:
         mock_save.assert_called()
 
     @patch("sticker_generator.sheet.create_sticker")
-    @patch("sticker_generator.sheet.save_transparent_png")
+    @patch("sticker_generator.sheet.save_transparent_image")
     def test_saves_individuals_when_requested(self, mock_save, mock_create, tmp_path):
         mock_create.return_value = Image.new("RGBA", (100, 100))
         output_path = tmp_path / "sheet.png"
@@ -273,3 +273,158 @@ class TestGenerateStickerSheet:
         assert result.sheet is not None
         # 1 sticker with 20px padding on all sides
         assert result.sheet.size == (140, 140)
+
+
+class TestSheetOutputFormats:
+    """Tests for sheet output format support."""
+
+    @patch("sticker_generator.sheet.create_sticker")
+    @patch("sticker_generator.sheet.save_transparent_image")
+    def test_format_passed_to_save(self, mock_save, mock_create, tmp_path):
+        mock_create.return_value = Image.new("RGBA", (100, 100))
+        output_path = tmp_path / "sheet.webp"
+
+        generate_sticker_sheet(
+            "test",
+            variations=2,
+            output=output_path,
+            output_format="webp",
+            delay_between_requests=0,
+        )
+
+        # Check that save was called with the correct format
+        mock_save.assert_called()
+        call_args = mock_save.call_args
+        # The format argument should have webp format type
+        fmt = call_args[0][2]  # Third positional arg is the format
+        from sticker_generator.formats import OutputFormatType
+
+        assert fmt.format_type == OutputFormatType.WEBP
+
+    @patch("sticker_generator.sheet.create_sticker")
+    @patch("sticker_generator.sheet.save_transparent_image")
+    def test_individuals_use_same_format(self, mock_save, mock_create, tmp_path):
+        mock_create.return_value = Image.new("RGBA", (100, 100))
+        output_path = tmp_path / "sheet.webp"
+
+        generate_sticker_sheet(
+            "test",
+            variations=2,
+            output=output_path,
+            save_individuals=True,
+            output_format="webp",
+            delay_between_requests=0,
+        )
+
+        # Should save sheet + 2 individuals = 3 calls
+        assert mock_save.call_count == 3
+
+        # All calls should use webp format
+        from sticker_generator.formats import OutputFormatType
+
+        for call in mock_save.call_args_list:
+            fmt = call[0][2]
+            assert fmt.format_type == OutputFormatType.WEBP
+
+    @patch("sticker_generator.sheet.create_sticker")
+    @patch("sticker_generator.sheet.save_transparent_image")
+    def test_individual_filenames_have_correct_extension(
+        self, mock_save, mock_create, tmp_path
+    ):
+        mock_create.return_value = Image.new("RGBA", (100, 100))
+        output_path = tmp_path / "sheet.webp"
+
+        generate_sticker_sheet(
+            "test",
+            variations=2,
+            output=output_path,
+            save_individuals=True,
+            output_format="webp",
+            delay_between_requests=0,
+        )
+
+        # Check individual filenames end with .webp
+        individual_calls = mock_save.call_args_list[1:]  # Skip sheet call
+        for call in individual_calls:
+            filename = call[0][1]  # Second positional arg is filename
+            assert filename.endswith(".webp")
+
+    @patch("sticker_generator.sheet.create_sticker")
+    @patch("sticker_generator.sheet.save_transparent_image")
+    def test_quality_override_applied(self, mock_save, mock_create, tmp_path):
+        mock_create.return_value = Image.new("RGBA", (100, 100))
+        output_path = tmp_path / "sheet.webp"
+
+        generate_sticker_sheet(
+            "test",
+            variations=1,
+            output=output_path,
+            output_format="webp",
+            quality=75,
+            lossless=False,
+            delay_between_requests=0,
+        )
+
+        mock_save.assert_called_once()
+        fmt = mock_save.call_args[0][2]
+        assert fmt.quality == 75
+        assert fmt.lossless is False
+
+    @patch("sticker_generator.sheet.create_sticker")
+    @patch("sticker_generator.sheet.save_transparent_image")
+    def test_auto_detect_format_from_output_extension(
+        self, mock_save, mock_create, tmp_path
+    ):
+        mock_create.return_value = Image.new("RGBA", (100, 100))
+        output_path = tmp_path / "sheet.webp"
+
+        # No explicit format, should detect from .webp extension
+        generate_sticker_sheet(
+            "test",
+            variations=1,
+            output=output_path,
+            delay_between_requests=0,
+        )
+
+        mock_save.assert_called_once()
+        fmt = mock_save.call_args[0][2]
+        from sticker_generator.formats import OutputFormatType
+
+        assert fmt.format_type == OutputFormatType.WEBP
+
+    @patch("sticker_generator.sheet.create_sticker")
+    @patch("sticker_generator.sheet.save_transparent_image")
+    def test_png_format_default(self, mock_save, mock_create, tmp_path):
+        mock_create.return_value = Image.new("RGBA", (100, 100))
+        output_path = tmp_path / "sheet.png"
+
+        generate_sticker_sheet(
+            "test",
+            variations=1,
+            output=output_path,
+            delay_between_requests=0,
+        )
+
+        mock_save.assert_called_once()
+        fmt = mock_save.call_args[0][2]
+        from sticker_generator.formats import OutputFormatType
+
+        assert fmt.format_type == OutputFormatType.PNG
+
+    @patch("sticker_generator.sheet.create_sticker")
+    def test_passes_format_params_to_create_sticker(self, mock_create):
+        """Verify format params are NOT passed to create_sticker (it doesn't save)."""
+        mock_create.return_value = Image.new("RGBA", (100, 100))
+
+        generate_sticker_sheet(
+            "test",
+            variations=1,
+            output_format="webp",
+            quality=85,
+            delay_between_requests=0,
+        )
+
+        # create_sticker is called with output=None, so format params shouldn't matter
+        mock_create.assert_called_once()
+        call_kwargs = mock_create.call_args[1]
+        assert call_kwargs["output"] is None

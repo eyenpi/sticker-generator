@@ -11,11 +11,12 @@ from typing import TYPE_CHECKING
 from google import genai
 from PIL import Image
 
+from sticker_generator.formats import OutputFormat, get_format
 from sticker_generator.image_processing import (
     cleanup_edges,
     remove_green_screen_aggressive,
     remove_green_screen_hsv,
-    save_transparent_png,
+    save_transparent_image,
 )
 from sticker_generator.styles import format_prompt_with_style
 
@@ -147,6 +148,9 @@ def create_sticker(
     api_key: str | None = None,
     edge_threshold: int = 64,
     style: str | None = None,
+    output_format: str | None = None,
+    quality: int | None = None,
+    lossless: bool | None = None,
 ) -> Image.Image:
     """Generate a sticker with transparent background.
 
@@ -155,13 +159,17 @@ def create_sticker(
 
     Args:
         prompt: Description of the sticker to generate.
-        output: Optional output filename (PNG recommended).
+        output: Optional output filename. Format auto-detected from extension.
         aspect_ratio: Image aspect ratio (default "1:1").
         save_raw: If True, save the raw image before processing.
         input_images: Optional list of reference image paths.
         api_key: Optional Gemini API key (uses GEMINI_API_KEY env var if not provided).
         edge_threshold: Alpha threshold for edge cleanup (0-255).
         style: Optional style preset name (e.g., "kawaii", "minimal", "3d").
+        output_format: Output format preset name ("png", "webp", "webp-lossy").
+            Auto-detected from filename extension if None.
+        quality: Quality for lossy formats (1-100). Overrides preset default.
+        lossless: Whether to use lossless compression. Overrides preset default.
 
     Returns:
         PIL Image with transparent background.
@@ -201,6 +209,49 @@ def create_sticker(
     transparent_image = cleanup_edges(transparent_image, threshold=edge_threshold)
 
     if output:
-        save_transparent_png(transparent_image, str(output))
+        # Build format configuration
+        fmt = _build_output_format(output_format, str(output), quality, lossless)
+        save_transparent_image(transparent_image, str(output), fmt)
 
     return transparent_image
+
+
+def _build_output_format(
+    output_format: str | None,
+    filename: str,
+    quality: int | None,
+    lossless: bool | None,
+) -> OutputFormat:
+    """Build OutputFormat from parameters, applying overrides.
+
+    Args:
+        output_format: Format preset name or None to auto-detect.
+        filename: Filename to detect format from if output_format is None.
+        quality: Quality override or None.
+        lossless: Lossless override or None.
+
+    Returns:
+        Configured OutputFormat.
+    """
+    from sticker_generator.formats import format_from_extension
+
+    # Get base format
+    if output_format is not None:
+        base_fmt = get_format(output_format)
+    else:
+        base_fmt = format_from_extension(filename)
+
+    # Return base if no overrides
+    if quality is None and lossless is None:
+        return base_fmt
+
+    # Apply overrides by creating new OutputFormat
+    new_quality = quality if quality is not None else base_fmt.quality
+    new_lossless = lossless if lossless is not None else base_fmt.lossless
+
+    return OutputFormat(
+        format_type=base_fmt.format_type,
+        quality=new_quality,
+        lossless=new_lossless,
+        extra_params=base_fmt.extra_params,
+    )
