@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sticker-generator"
-version = "0.5.0"
+version = "0.5.1"
 description = "Generate stickers with transparent backgrounds using Gemini AI"
 readme = "README.md"
 license = "MIT"
