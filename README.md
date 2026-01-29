@@ -2,6 +2,13 @@
 
 Generate stickers with transparent backgrounds using Google's Gemini AI.
 
+## Examples
+
+| Kawaii | 3D | Pixel Art | Watercolor | Minimal |
+|:------:|:--:|:---------:|:----------:|:-------:|
+| ![Kawaii Cat](examples/cat_kawaii.png) | ![3D Rocket](examples/rocket_3d.png) | ![Pixel Robot](examples/robot_pixel.png) | ![Watercolor Rose](examples/rose_watercolor.png) | ![Minimal Coffee](examples/coffee_minimal.png) |
+| *"a cute happy cat"* | *"a sleek rocket ship"* | *"a friendly robot"* | *"a beautiful rose"* | *"a coffee cup"* |
+
 ## Installation
 
 ```bash

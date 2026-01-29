@@ -208,6 +208,7 @@ __marimo__/
 
 # Generated stickers (for testing)
 *.png
+!examples/*.png
 !tests/fixtures/*.png
 
 # OS
