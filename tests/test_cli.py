@@ -1,11 +1,52 @@
 """Tests for command-line interface."""
 
+import argparse
 import sys
 from unittest.mock import MagicMock, patch
 
+import pytest
 from PIL import Image
 
-from sticker_generator.cli import main
+from sticker_generator.cli import main, parse_resize_arg
+
+
+class TestParseResizeArg:
+    def test_square_format(self):
+        assert parse_resize_arg("512") == (512, 512)
+
+    def test_width_x_height_format(self):
+        assert parse_resize_arg("512x256") == (512, 256)
+
+    def test_case_insensitive_x(self):
+        assert parse_resize_arg("512X256") == (512, 256)
+
+    def test_whitespace_trimmed(self):
+        assert parse_resize_arg("  512  ") == (512, 512)
+        assert parse_resize_arg(" 512 x 256 ") == (512, 256)
+
+    def test_invalid_format_raises(self):
+        with pytest.raises(argparse.ArgumentTypeError, match="Invalid resize format"):
+            parse_resize_arg("512x256x128")
+
+    def test_zero_raises(self):
+        with pytest.raises(argparse.ArgumentTypeError, match="must be positive"):
+            parse_resize_arg("0")
+
+    def test_zero_height_raises(self):
+        with pytest.raises(argparse.ArgumentTypeError, match="must be positive"):
+            parse_resize_arg("512x0")
+
+    def test_negative_raises(self):
+        with pytest.raises(argparse.ArgumentTypeError, match="must be positive"):
+            parse_resize_arg("-100")
+
+    def test_non_numeric_raises(self):
+        with pytest.raises(argparse.ArgumentTypeError, match="Invalid resize format"):
+            parse_resize_arg("abc")
+
+    def test_non_numeric_height_raises(self):
+        with pytest.raises(argparse.ArgumentTypeError, match="must be integers"):
+            parse_resize_arg("512xabc")
 
 
 class TestCLIFormatOptions:
@@ -205,6 +246,33 @@ class TestCLIBasicFunctionality:
         assert result == 0
         call_kwargs = mock_create.call_args[1]
         assert call_kwargs["style"] == "kawaii"
+
+    @patch("sticker_generator.cli.create_sticker")
+    def test_resize_flag_passed(self, mock_create):
+        mock_create.return_value = Image.new("RGBA", (100, 100))
+
+        with patch.object(sys, "argv", ["prog", "test prompt", "--resize", "512"]):
+            result = main()
+
+        assert result == 0
+        call_kwargs = mock_create.call_args[1]
+        assert call_kwargs["resize"] == (512, 512)
+
+    @patch("sticker_generator.cli.create_sticker")
+    def test_resize_exact_flag_passed(self, mock_create):
+        mock_create.return_value = Image.new("RGBA", (100, 100))
+
+        with patch.object(
+            sys,
+            "argv",
+            ["prog", "test prompt", "--resize", "512x256", "--resize-exact"],
+        ):
+            result = main()
+
+        assert result == 0
+        call_kwargs = mock_create.call_args[1]
+        assert call_kwargs["resize"] == (512, 256)
+        assert call_kwargs["resize_exact"] is True
 
     def test_error_handling(self, capsys):
         with patch("sticker_generator.cli.create_sticker") as mock_create:

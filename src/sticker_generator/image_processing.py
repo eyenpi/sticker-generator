@@ -163,6 +163,45 @@ def cleanup_edges(image: Image.Image, threshold: int = 128) -> Image.Image:
     return Image.fromarray(data)
 
 
+def resize_image(
+    image: Image.Image,
+    size: tuple[int, int],
+    maintain_aspect: bool = True,
+    resampling: Image.Resampling = Image.Resampling.LANCZOS,
+) -> Image.Image:
+    """Resize an image to the specified dimensions.
+
+    Args:
+        image: PIL Image to resize.
+        size: Target size as (width, height).
+        maintain_aspect: If True, fit within bounds while preserving aspect ratio.
+                        If False, force exact dimensions (may distort).
+        resampling: Resampling filter to use (default LANCZOS for best quality).
+
+    Returns:
+        Resized PIL Image.
+
+    Raises:
+        ValueError: If width or height is not positive.
+    """
+    width, height = size
+    if width <= 0 or height <= 0:
+        raise ValueError("Width and height must be positive integers")
+
+    if maintain_aspect:
+        # Calculate size that fits within bounds while preserving aspect ratio
+        original_width, original_height = image.size
+        ratio = min(width / original_width, height / original_height)
+        new_width = int(original_width * ratio)
+        new_height = int(original_height * ratio)
+        # Ensure at least 1 pixel
+        new_width = max(1, new_width)
+        new_height = max(1, new_height)
+        return image.resize((new_width, new_height), resampling)
+    else:
+        return image.resize((width, height), resampling)
+
+
 def _resolve_format(
     output_format: OutputFormat | str | None,
     filename: str,

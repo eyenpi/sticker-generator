@@ -12,6 +12,51 @@ from sticker_generator.sheet import generate_sticker_sheet
 from sticker_generator.styles import get_available_styles
 
 
+def parse_resize_arg(value: str) -> tuple[int, int]:
+    """Parse resize argument string into (width, height) tuple.
+
+    Args:
+        value: Size string in format "SIZE" (square) or "WIDTHxHEIGHT".
+
+    Returns:
+        Tuple of (width, height).
+
+    Raises:
+        argparse.ArgumentTypeError: If format is invalid or values are not positive.
+    """
+    value = value.strip()
+
+    # Handle WIDTHxHEIGHT format (case-insensitive x)
+    if "x" in value.lower():
+        parts = value.lower().split("x")
+        if len(parts) != 2:
+            raise argparse.ArgumentTypeError(
+                f"Invalid resize format: {value}. Use SIZE or WIDTHxHEIGHT"
+            )
+        try:
+            width = int(parts[0].strip())
+            height = int(parts[1].strip())
+        except ValueError:
+            raise argparse.ArgumentTypeError(
+                f"Invalid resize format: {value}. Width and height must be integers"
+            ) from None
+    else:
+        # Square format
+        try:
+            width = height = int(value)
+        except ValueError:
+            raise argparse.ArgumentTypeError(
+                f"Invalid resize format: {value}. Use SIZE or WIDTHxHEIGHT"
+            ) from None
+
+    if width <= 0 or height <= 0:
+        raise argparse.ArgumentTypeError(
+            f"Invalid resize dimensions: {value}. Width and height must be positive"
+        )
+
+    return (width, height)
+
+
 def main() -> int:
     """Main entry point for the CLI."""
     parser = argparse.ArgumentParser(
@@ -96,7 +141,8 @@ def main() -> int:
         "--format",
         choices=get_available_formats(),
         metavar="FORMAT",
-        help="Output format: " + ", ".join(get_available_formats())
+        help="Output format: "
+        + ", ".join(get_available_formats())
         + " (default: auto-detect from filename)",
     )
     parser.add_argument(
@@ -115,6 +161,17 @@ def main() -> int:
         "--lossy",
         action="store_true",
         help="Force lossy compression",
+    )
+    parser.add_argument(
+        "--resize",
+        type=parse_resize_arg,
+        metavar="SIZE",
+        help="Resize output to WIDTHxHEIGHT or SIZE for square (e.g., 512 or 512x256)",
+    )
+    parser.add_argument(
+        "--resize-exact",
+        action="store_true",
+        help="Force exact resize dimensions (may distort aspect ratio)",
     )
 
     args = parser.parse_args()
@@ -168,6 +225,8 @@ def main() -> int:
                 output_format=args.format,
                 quality=args.quality,
                 lossless=lossless,
+                resize=args.resize,
+                resize_exact=args.resize_exact,
             )
 
             if result.failed_indices:
@@ -193,6 +252,8 @@ def main() -> int:
                 output_format=args.format,
                 quality=args.quality,
                 lossless=lossless,
+                resize=args.resize,
+                resize_exact=args.resize_exact,
             )
             print(f"Sticker saved to: {args.output}")
 

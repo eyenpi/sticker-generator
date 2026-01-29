@@ -32,10 +32,11 @@ This package generates stickers with transparent backgrounds using Google's Gemi
 1. **Generation** (`core.py`): Sends prompt to Gemini with instructions to use chromakey green (#00FF00) background
 2. **Green Removal** (`image_processing.py`): HSV-based detection removes green pixels, with optional aggressive pass for stubborn greens
 3. **Edge Cleanup** (`image_processing.py`): Thresholds alpha channel to remove semi-transparent halos
+4. **Resize** (`image_processing.py`): Optional resizing with LANCZOS resampling, aspect ratio preservation
 
 Key modules:
 - `core.py`: Gemini API interaction, prompt engineering, main `create_sticker()` function
-- `image_processing.py`: Pure image processing (no API calls), HSV conversion, green removal, edge cleanup, `save_transparent_image()`
+- `image_processing.py`: Pure image processing (no API calls), HSV conversion, green removal, edge cleanup, resize, `save_transparent_image()`
 - `formats.py`: Output format configuration (`OutputFormat` dataclass, presets for png/webp/webp-lossy)
 - `styles.py`: Style presets that modify prompts (kawaii, minimal, 3d, pixel-art, retro, watercolor)
 - `sheet.py`: Sticker sheet generation - multiple variations combined into a grid

@@ -11,6 +11,7 @@ from sticker_generator.image_processing import (
     cleanup_edges,
     remove_green_screen_aggressive,
     remove_green_screen_hsv,
+    resize_image,
     rgb_to_hsv_array,
     save_transparent_image,
     save_transparent_png,
@@ -131,6 +132,76 @@ class TestCleanupEdges:
         result = cleanup_edges(img)
         # Should return unchanged
         assert result.mode == "RGB"
+
+
+class TestResizeImage:
+    def test_resize_square_image_to_smaller_square(self):
+        img = Image.new("RGBA", (100, 100), (255, 0, 0, 255))
+        result = resize_image(img, (50, 50))
+        assert result.size == (50, 50)
+
+    def test_resize_square_image_to_larger_square(self):
+        img = Image.new("RGBA", (50, 50), (255, 0, 0, 255))
+        result = resize_image(img, (100, 100))
+        assert result.size == (100, 100)
+
+    def test_maintain_aspect_landscape_to_square(self):
+        # 200x100 landscape image fit into 50x50 box -> 50x25
+        img = Image.new("RGBA", (200, 100), (255, 0, 0, 255))
+        result = resize_image(img, (50, 50), maintain_aspect=True)
+        assert result.size == (50, 25)
+
+    def test_maintain_aspect_portrait_to_square(self):
+        # 100x200 portrait image fit into 50x50 box -> 25x50
+        img = Image.new("RGBA", (100, 200), (255, 0, 0, 255))
+        result = resize_image(img, (50, 50), maintain_aspect=True)
+        assert result.size == (25, 50)
+
+    def test_exact_resize_distorts(self):
+        # 200x100 forced to 50x50 (distorts)
+        img = Image.new("RGBA", (200, 100), (255, 0, 0, 255))
+        result = resize_image(img, (50, 50), maintain_aspect=False)
+        assert result.size == (50, 50)
+
+    def test_preserves_transparency(self):
+        # Create image with transparent pixels
+        img = Image.new("RGBA", (100, 100), (255, 0, 0, 128))
+        result = resize_image(img, (50, 50))
+        assert result.mode == "RGBA"
+        # Check that alpha is preserved (approximately, due to resampling)
+        pixel = result.getpixel((25, 25))
+        assert isinstance(pixel, tuple) and len(pixel) == 4
+        assert pixel[3] > 0  # Has some alpha
+
+    def test_zero_width_raises_error(self):
+        img = Image.new("RGBA", (100, 100))
+        with pytest.raises(ValueError, match="must be positive"):
+            resize_image(img, (0, 50))
+
+    def test_negative_height_raises_error(self):
+        img = Image.new("RGBA", (100, 100))
+        with pytest.raises(ValueError, match="must be positive"):
+            resize_image(img, (50, -10))
+
+    def test_resize_to_one_pixel(self):
+        img = Image.new("RGBA", (100, 100), (255, 0, 0, 255))
+        result = resize_image(img, (1, 1))
+        assert result.size == (1, 1)
+
+    def test_custom_resampling_filter(self):
+        img = Image.new("RGBA", (100, 100), (255, 0, 0, 255))
+        # Should not raise - NEAREST is a valid filter
+        result = resize_image(img, (50, 50), resampling=Image.Resampling.NEAREST)
+        assert result.size == (50, 50)
+        # Also test BILINEAR
+        result = resize_image(img, (50, 50), resampling=Image.Resampling.BILINEAR)
+        assert result.size == (50, 50)
+
+    def test_rgb_mode_preserved(self):
+        img = Image.new("RGB", (100, 100), (255, 0, 0))
+        result = resize_image(img, (50, 50))
+        assert result.mode == "RGB"
+        assert result.size == (50, 50)
 
 
 def create_transparent_test_image(width: int = 50, height: int = 50) -> Image.Image:

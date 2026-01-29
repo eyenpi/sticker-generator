@@ -16,6 +16,7 @@ from sticker_generator.image_processing import (
     cleanup_edges,
     remove_green_screen_aggressive,
     remove_green_screen_hsv,
+    resize_image,
     save_transparent_image,
 )
 from sticker_generator.styles import format_prompt_with_style
@@ -151,11 +152,13 @@ def create_sticker(
     output_format: str | None = None,
     quality: int | None = None,
     lossless: bool | None = None,
+    resize: tuple[int, int] | None = None,
+    resize_exact: bool = False,
 ) -> Image.Image:
     """Generate a sticker with transparent background.
 
     Complete workflow: generates image with green background, removes green,
-    cleans edges, and optionally saves to file.
+    cleans edges, optionally resizes, and optionally saves to file.
 
     Args:
         prompt: Description of the sticker to generate.
@@ -170,6 +173,9 @@ def create_sticker(
             Auto-detected from filename extension if None.
         quality: Quality for lossy formats (1-100). Overrides preset default.
         lossless: Whether to use lossless compression. Overrides preset default.
+        resize: Optional target size as (width, height) to resize the output.
+        resize_exact: If True, force exact dimensions (may distort).
+            Default maintains aspect ratio.
 
     Returns:
         PIL Image with transparent background.
@@ -207,6 +213,12 @@ def create_sticker(
 
     # Edge cleanup
     transparent_image = cleanup_edges(transparent_image, threshold=edge_threshold)
+
+    # Optional resize
+    if resize is not None:
+        transparent_image = resize_image(
+            transparent_image, resize, maintain_aspect=not resize_exact
+        )
 
     if output:
         # Build format configuration
