@@ -9,11 +9,13 @@ from sticker_generator.formats import (
     get_format,
 )
 from sticker_generator.image_processing import (
+    TransparencyMetrics,
     cleanup_edges,
     remove_green_screen_aggressive,
     remove_green_screen_hsv,
     resize_image,
     save_transparent_image,
+    validate_transparency,
 )
 from sticker_generator.sheet import (
     SheetResult,
@@ -36,6 +38,8 @@ __all__ = [
     "cleanup_edges",
     "resize_image",
     "save_transparent_image",
+    "validate_transparency",
+    "TransparencyMetrics",
     "STYLE_PRESETS",
     "StylePreset",
     "get_available_styles",

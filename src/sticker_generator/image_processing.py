@@ -3,11 +3,103 @@
 from __future__ import annotations
 
 import warnings
+from dataclasses import dataclass
 
 import numpy as np
 from PIL import Image
 
 from sticker_generator.formats import OutputFormat, format_from_extension, get_format
+
+
+@dataclass(frozen=True)
+class TransparencyMetrics:
+    """Quality metrics for a processed transparent image.
+
+    Attributes:
+        total_pixels: Total number of pixels in the image.
+        transparent_pixels: Number of fully transparent pixels (alpha == 0).
+        opaque_pixels: Number of fully opaque pixels (alpha == 255).
+        semi_transparent_pixels: Pixels with alpha between 1 and 254.
+        transparent_ratio: Fraction of transparent pixels (0.0 to 1.0).
+        opaque_ratio: Fraction of opaque pixels (0.0 to 1.0).
+    """
+
+    total_pixels: int
+    transparent_pixels: int
+    opaque_pixels: int
+    semi_transparent_pixels: int
+    transparent_ratio: float
+    opaque_ratio: float
+
+    @property
+    def is_mostly_transparent(self) -> bool:
+        """True if >95% of pixels are transparent (subject likely removed)."""
+        return self.transparent_ratio > 0.95
+
+    @property
+    def is_mostly_opaque(self) -> bool:
+        """True if <5% transparent (green removal likely failed)."""
+        return self.transparent_ratio < 0.05
+
+    @property
+    def has_quality_warning(self) -> bool:
+        """True if the image has a quality issue worth warning about."""
+        return self.is_mostly_transparent or self.is_mostly_opaque
+
+    @property
+    def warning_message(self) -> str | None:
+        """Return a warning message if there's a quality issue, else None."""
+        if self.is_mostly_transparent:
+            pct = self.transparent_ratio * 100
+            return (
+                f"Image is {pct:.0f}% transparent - "
+                "the subject may have been removed along with the background"
+            )
+        if self.is_mostly_opaque:
+            pct = self.transparent_ratio * 100
+            return (
+                f"Image is only {pct:.0f}% transparent - "
+                "green background removal may have failed"
+            )
+        return None
+
+
+def validate_transparency(image: Image.Image) -> TransparencyMetrics:
+    """Compute transparency quality metrics for a processed image.
+
+    Args:
+        image: PIL Image to analyze (should be RGBA).
+
+    Returns:
+        TransparencyMetrics with pixel counts and ratios.
+    """
+    if image.mode != "RGBA":
+        # Non-RGBA images are fully opaque
+        total = image.width * image.height
+        return TransparencyMetrics(
+            total_pixels=total,
+            transparent_pixels=0,
+            opaque_pixels=total,
+            semi_transparent_pixels=0,
+            transparent_ratio=0.0,
+            opaque_ratio=1.0,
+        )
+
+    data = np.array(image)
+    alpha = data[:, :, 3]
+    total = int(alpha.size)
+    transparent = int(np.sum(alpha == 0))
+    opaque = int(np.sum(alpha == 255))
+    semi = total - transparent - opaque
+
+    return TransparencyMetrics(
+        total_pixels=total,
+        transparent_pixels=transparent,
+        opaque_pixels=opaque,
+        semi_transparent_pixels=semi,
+        transparent_ratio=transparent / total if total > 0 else 0.0,
+        opaque_ratio=opaque / total if total > 0 else 0.0,
+    )
 
 
 def rgb_to_hsv_array(rgb_array: np.ndarray) -> np.ndarray:

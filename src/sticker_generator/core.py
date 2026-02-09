@@ -18,6 +18,7 @@ from sticker_generator.image_processing import (
     remove_green_screen_hsv,
     resize_image,
     save_transparent_image,
+    validate_transparency,
 )
 from sticker_generator.styles import format_prompt_with_style
 
@@ -219,6 +220,11 @@ def create_sticker(
         transparent_image = resize_image(
             transparent_image, resize, maintain_aspect=not resize_exact
         )
+
+    # Quality validation
+    metrics = validate_transparency(transparent_image)
+    if metrics.has_quality_warning:
+        print(f"Warning: {metrics.warning_message}")
 
     if output:
         # Build format configuration
