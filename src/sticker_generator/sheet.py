@@ -121,6 +121,11 @@ def generate_sticker_sheet(
     lossless: bool | None = None,
     resize: tuple[int, int] | None = None,
     resize_exact: bool = False,
+    hue_center: float = 115,
+    hue_range: float = 35,
+    min_saturation: float = 25,
+    min_value: float = 40,
+    green_threshold: float = 1.1,
 ) -> SheetResult:
     """Generate multiple sticker variations and combine into a sheet.
 
@@ -145,6 +150,12 @@ def generate_sticker_sheet(
         lossless: Whether to use lossless compression. Overrides preset default.
         resize: Optional target size as (width, height) to resize each sticker.
         resize_exact: If True, force exact dimensions (may distort).
+        hue_center: Center hue for green detection in degrees (default 115).
+        hue_range: Tolerance around hue center in degrees (default 35).
+        min_saturation: Minimum saturation % to consider green (default 25).
+        min_value: Minimum brightness % to consider green (default 40).
+        green_threshold: Ratio threshold for aggressive green removal
+            (default 1.1).
 
     Returns:
         SheetResult with stickers, sheet image, and failed indices.
@@ -168,6 +179,11 @@ def generate_sticker_sheet(
                     style=style,
                     resize=resize,
                     resize_exact=resize_exact,
+                    hue_center=hue_center,
+                    hue_range=hue_range,
+                    min_saturation=min_saturation,
+                    min_value=min_value,
+                    green_threshold=green_threshold,
                 )
                 stickers.append(sticker)
                 print(f"Generated variation {i + 1}/{variations}")

@@ -154,6 +154,11 @@ def create_sticker(
     lossless: bool | None = None,
     resize: tuple[int, int] | None = None,
     resize_exact: bool = False,
+    hue_center: float = 115,
+    hue_range: float = 35,
+    min_saturation: float = 25,
+    min_value: float = 40,
+    green_threshold: float = 1.1,
 ) -> Image.Image:
     """Generate a sticker with transparent background.
 
@@ -176,6 +181,12 @@ def create_sticker(
         resize: Optional target size as (width, height) to resize the output.
         resize_exact: If True, force exact dimensions (may distort).
             Default maintains aspect ratio.
+        hue_center: Center hue for green detection in degrees (default 115).
+        hue_range: Tolerance around hue center in degrees (default 35).
+        min_saturation: Minimum saturation % to consider green (default 25).
+        min_value: Minimum brightness % to consider green (default 40).
+        green_threshold: Ratio threshold for aggressive green removal
+            (default 1.1). Higher values are more conservative.
 
     Returns:
         PIL Image with transparent background.
@@ -193,13 +204,13 @@ def create_sticker(
         raw_filename = output_path.with_stem(output_path.stem + "_raw")
         raw_image.save(raw_filename)
 
-    # HSV-based green removal (permissive settings for various green shades)
+    # HSV-based green removal
     transparent_image = remove_green_screen_hsv(
         raw_image,
-        hue_center=115,
-        hue_range=35,
-        min_saturation=25,
-        min_value=40,
+        hue_center=hue_center,
+        hue_range=hue_range,
+        min_saturation=min_saturation,
+        min_value=min_value,
         dilation_iterations=2,
         erosion_iterations=0,
     )
@@ -207,7 +218,7 @@ def create_sticker(
     # Second pass: aggressive removal for remaining greens
     transparent_image = remove_green_screen_aggressive(
         transparent_image,
-        green_threshold=1.1,
+        green_threshold=green_threshold,
         edge_pixels=1,
     )
 

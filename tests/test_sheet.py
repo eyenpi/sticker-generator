@@ -250,6 +250,11 @@ class TestGenerateStickerSheet:
             style=None,
             resize=None,
             resize_exact=False,
+            hue_center=115,
+            hue_range=35,
+            min_saturation=25,
+            min_value=40,
+            green_threshold=1.1,
         )
 
     @patch("sticker_generator.sheet.create_sticker")
@@ -298,6 +303,11 @@ class TestGenerateStickerSheet:
             style=None,
             resize=(256, 256),
             resize_exact=True,
+            hue_center=115,
+            hue_range=35,
+            min_saturation=25,
+            min_value=40,
+            green_threshold=1.1,
         )
 
 
