@@ -72,6 +72,16 @@ sticker-generator "cute cat" -o cat.webp                    # Auto-detect from e
 sticker-generator "cute cat" -o cat.webp --lossy -q 85      # Lossy WebP with quality
 sticker-generator "cute cat" -f webp-lossy -q 90            # Explicit format preset
 sticker-generator "cute cat" -n 4 --sheet -o sheet.webp     # Sheet in WebP format
+
+# Process an existing green-screen image (no API key needed)
+sticker-generator --process photo_with_green_bg.png -o transparent.png
+sticker-generator --process input.png -o out.webp --resize 512
+
+# Strict mode: exit with error if quality validation fails
+sticker-generator "a cat" --strict
+
+# Tune green removal for tricky images
+sticker-generator "a cat" --hue-center 120 --hue-range 40 --min-saturation 30
 ```
 
 #### Available Styles
@@ -98,6 +108,26 @@ Format options:
 - `-q, --quality 1-100` - Quality for lossy formats (higher is better)
 - `--lossless` - Force lossless compression
 - `--lossy` - Force lossy compression
+
+#### Green Removal Tuning
+
+If green removal produces bad results (incomplete removal or subject removal), tune these parameters:
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--hue-center` | 115 | Center hue for green detection (degrees) |
+| `--hue-range` | 35 | Tolerance around hue center (degrees) |
+| `--min-saturation` | 25 | Minimum saturation % to consider green |
+| `--min-value` | 40 | Minimum brightness % to consider green |
+| `--green-threshold` | 1.1 | Aggressive green ratio threshold (higher = more conservative) |
+
+#### Quality Validation
+
+After processing, the tool automatically checks the transparency ratio and warns about potential issues:
+- **>95% transparent**: The subject may have been removed along with the background
+- **<5% transparent**: Green background removal may have failed
+
+Use `--strict` to make these warnings exit with a non-zero status code (useful in scripts/CI).
 
 ### Python API
 
@@ -166,6 +196,65 @@ sticker = create_sticker(
     resize=(512, 256),
     resize_exact=True
 )
+
+# Custom green removal parameters for tricky images
+sticker = create_sticker(
+    prompt="a tree frog",
+    output="frog.png",
+    hue_center=120,
+    hue_range=40,
+    min_saturation=30,
+    min_value=50,
+    green_threshold=1.3
+)
+```
+
+### Process Existing Images
+
+Remove green backgrounds from existing images without using the Gemini API:
+
+```python
+from sticker_generator import process_image
+
+# Basic usage - remove green background from an existing image
+result = process_image("green_screen_photo.png", output="transparent.png")
+
+# With resize and format options
+result = process_image(
+    "input.png",
+    output="output.webp",
+    resize=(512, 512),
+    output_format="webp-lossy",
+    quality=90
+)
+
+# Just get the PIL Image without saving
+image = process_image("input.png")
+```
+
+CLI equivalent:
+```bash
+sticker-generator --process green_screen_photo.png -o transparent.png
+sticker-generator --process input.png -o output.webp --resize 512 -f webp-lossy -q 90
+```
+
+### Quality Validation
+
+Check the quality of processed images programmatically:
+
+```python
+from sticker_generator import validate_transparency, create_sticker
+
+sticker = create_sticker("a cute cat", output="cat.png")
+
+# Inspect transparency metrics
+metrics = validate_transparency(sticker)
+print(f"Transparent: {metrics.transparent_ratio:.0%}")
+print(f"Opaque: {metrics.opaque_ratio:.0%}")
+print(f"Semi-transparent: {metrics.semi_transparent_pixels} pixels")
+
+if metrics.has_quality_warning:
+    print(f"Warning: {metrics.warning_message}")
 ```
 
 ### Sticker Sheets
@@ -212,7 +301,7 @@ result = generate_sticker_sheet(
 
 ### Image Processing Only
 
-If you have your own green-screen images:
+If you have your own green-screen images and want fine-grained control:
 
 ```python
 from PIL import Image
@@ -243,9 +332,11 @@ save_transparent_image(resized, "transparent.webp", "webp-lossy")  # Lossy WebP
 
 1. **Style Application**: Optional style presets modify your prompt to achieve specific visual styles
 2. **Generation**: Uses Gemini AI to generate an image with a chromakey green (#00FF00) background
-3. **Green Removal**: Converts to HSV color space and removes pixels matching green hue
-4. **Edge Cleanup**: Removes semi-transparent edge artifacts for clean results
-5. **Resize** (optional): Resizes output to specified dimensions using LANCZOS resampling
+3. **Green Removal**: Converts to HSV color space and removes pixels matching green hue (configurable thresholds)
+4. **Aggressive Green Pass**: Catches darker greens and tinted shadows using green channel dominance ratio
+5. **Edge Cleanup**: Removes semi-transparent edge artifacts for clean results
+6. **Resize** (optional): Resizes output to specified dimensions using LANCZOS resampling
+7. **Quality Validation**: Checks transparency ratio and warns about potential issues
 
 ## License
 
