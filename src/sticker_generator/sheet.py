@@ -16,6 +16,7 @@ from sticker_generator.core import _build_output_format, create_sticker
 from sticker_generator.image_processing import save_transparent_image
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from os import PathLike
 
 logger = logging.getLogger(__name__)
@@ -182,6 +183,7 @@ def generate_sticker_sheet(
     sticker_retry_delay: float = 1.0,
     save_intermediates: str | PathLike | None = None,
     max_workers: int = 1,
+    progress_callback: Callable[[], object] | None = None,
 ) -> SheetResult:
     """Generate multiple sticker variations and combine into a sheet.
 
@@ -220,6 +222,8 @@ def generate_sticker_sheet(
         save_intermediates: Directory to save intermediate images for debugging.
         max_workers: Maximum number of concurrent workers (default 1 for
             sequential execution).
+        progress_callback: Optional callable invoked after each variation
+            completes (success or failure). Called with no arguments.
 
     Returns:
         SheetResult with stickers, sheet image, and failed indices.
@@ -276,6 +280,8 @@ def generate_sticker_sheet(
                 stickers.append(result)
             else:
                 failed_indices.append(i)
+            if progress_callback is not None:
+                progress_callback()
     else:
         for i in range(variations):
             variation_intermediates = None
@@ -310,6 +316,9 @@ def generate_sticker_sheet(
                 stickers.append(result)
             else:
                 failed_indices.append(i)
+
+            if progress_callback is not None:
+                progress_callback()
 
             if i < variations - 1:
                 time.sleep(delay_between_requests)

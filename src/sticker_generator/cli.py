@@ -7,6 +7,9 @@ import logging
 import sys
 from pathlib import Path
 
+from tqdm import tqdm
+from tqdm.contrib.logging import logging_redirect_tqdm
+
 from sticker_generator.batch import (
     batch_generate,
     batch_process_images,
@@ -243,6 +246,12 @@ def main() -> int:
         "(auto-generated from output stem if DIR omitted)",
     )
 
+    parser.add_argument(
+        "--no-progress",
+        action="store_true",
+        help="Disable progress bars",
+    )
+
     # Retry parameters
     retry_group = parser.add_argument_group(
         "retry options",
@@ -382,6 +391,8 @@ def main() -> int:
         logger.error("Error: --max-workers must be at least 1")
         return 1
 
+    disable_progress = args.quiet or args.no_progress
+
     # Validate batch flag combinations
     if args.batch_prompts and args.batch_dir:
         logger.error("Error: Cannot use both --batch-prompts and --batch-dir")
@@ -441,31 +452,39 @@ def main() -> int:
                 len(prompts),
                 args.batch_prompts,
             )
-            batch_result = batch_generate(
-                prompts=prompts,
-                output_dir=args.output_dir,
-                aspect_ratio=args.aspect_ratio,
-                input_images=args.images,
-                api_key=args.api_key,
-                edge_threshold=args.edge_threshold,
-                style=args.style,
-                output_format=args.format,
-                quality=args.quality,
-                lossless=lossless,
-                resize=args.resize,
-                resize_exact=args.resize_exact,
-                hue_center=args.hue_center,
-                hue_range=args.hue_range,
-                min_saturation=args.min_saturation,
-                min_value=args.min_value,
-                green_threshold=args.green_threshold,
-                max_retries=args.max_retries,
-                retry_delay=args.retry_delay,
-                delay_between_requests=args.delay,
-                strict=args.strict,
-                save_intermediates=save_intermediates,
-                max_workers=args.max_workers,
-            )
+            with logging_redirect_tqdm():
+                with tqdm(
+                    total=len(prompts),
+                    desc="Generating stickers",
+                    disable=disable_progress,
+                    file=sys.stderr,
+                ) as pbar:
+                    batch_result = batch_generate(
+                        prompts=prompts,
+                        output_dir=args.output_dir,
+                        aspect_ratio=args.aspect_ratio,
+                        input_images=args.images,
+                        api_key=args.api_key,
+                        edge_threshold=args.edge_threshold,
+                        style=args.style,
+                        output_format=args.format,
+                        quality=args.quality,
+                        lossless=lossless,
+                        resize=args.resize,
+                        resize_exact=args.resize_exact,
+                        hue_center=args.hue_center,
+                        hue_range=args.hue_range,
+                        min_saturation=args.min_saturation,
+                        min_value=args.min_value,
+                        green_threshold=args.green_threshold,
+                        max_retries=args.max_retries,
+                        retry_delay=args.retry_delay,
+                        delay_between_requests=args.delay,
+                        strict=args.strict,
+                        save_intermediates=save_intermediates,
+                        max_workers=args.max_workers,
+                        progress_callback=pbar.update,
+                    )
             if batch_result.failed:
                 logger.warning(
                     "%d/%d items failed", len(batch_result.failed), batch_result.total
@@ -476,24 +495,39 @@ def main() -> int:
 
         elif args.batch_dir:
             logger.info("Batch processing images from: %s", args.batch_dir)
-            batch_result = batch_process_images(
-                input_dir=args.batch_dir,
-                output_dir=args.output_dir,
-                edge_threshold=args.edge_threshold,
-                output_format=args.format,
-                quality=args.quality,
-                lossless=lossless,
-                resize=args.resize,
-                resize_exact=args.resize_exact,
-                hue_center=args.hue_center,
-                hue_range=args.hue_range,
-                min_saturation=args.min_saturation,
-                min_value=args.min_value,
-                green_threshold=args.green_threshold,
-                strict=args.strict,
-                save_intermediates=save_intermediates,
-                max_workers=args.max_workers,
+            from sticker_generator.batch import IMAGE_EXTENSIONS
+
+            image_count = sum(
+                1
+                for f in Path(args.batch_dir).iterdir()
+                if f.suffix.lower() in IMAGE_EXTENSIONS
             )
+            with logging_redirect_tqdm():
+                with tqdm(
+                    total=image_count,
+                    desc="Processing images",
+                    disable=disable_progress,
+                    file=sys.stderr,
+                ) as pbar:
+                    batch_result = batch_process_images(
+                        input_dir=args.batch_dir,
+                        output_dir=args.output_dir,
+                        edge_threshold=args.edge_threshold,
+                        output_format=args.format,
+                        quality=args.quality,
+                        lossless=lossless,
+                        resize=args.resize,
+                        resize_exact=args.resize_exact,
+                        hue_center=args.hue_center,
+                        hue_range=args.hue_range,
+                        min_saturation=args.min_saturation,
+                        min_value=args.min_value,
+                        green_threshold=args.green_threshold,
+                        strict=args.strict,
+                        save_intermediates=save_intermediates,
+                        max_workers=args.max_workers,
+                        progress_callback=pbar.update,
+                    )
             if batch_result.failed:
                 logger.warning(
                     "%d/%d items failed", len(batch_result.failed), batch_result.total
@@ -531,36 +565,44 @@ def main() -> int:
 
             if args.variations > 1:
                 logger.info("Generating %d variations...", args.variations)
-                result = generate_sticker_sheet(
-                    prompt=args.prompt,
-                    variations=args.variations,
-                    output=args.output if args.sheet else None,
-                    save_individuals=args.save_individuals or not args.sheet,
-                    individual_prefix=Path(args.output).stem
-                    if not args.sheet
-                    else None,
-                    aspect_ratio=args.aspect_ratio,
-                    input_images=args.images,
-                    api_key=args.api_key,
-                    edge_threshold=args.edge_threshold,
-                    columns=args.columns,
-                    padding=args.padding,
-                    style=args.style,
-                    output_format=args.format,
-                    quality=args.quality,
-                    lossless=lossless,
-                    resize=args.resize,
-                    resize_exact=args.resize_exact,
-                    hue_center=args.hue_center,
-                    hue_range=args.hue_range,
-                    min_saturation=args.min_saturation,
-                    min_value=args.min_value,
-                    green_threshold=args.green_threshold,
-                    sticker_max_retries=args.max_retries,
-                    sticker_retry_delay=args.retry_delay,
-                    save_intermediates=save_intermediates,
-                    max_workers=args.max_workers,
-                )
+                with logging_redirect_tqdm():
+                    with tqdm(
+                        total=args.variations,
+                        desc="Generating variations",
+                        disable=disable_progress,
+                        file=sys.stderr,
+                    ) as pbar:
+                        result = generate_sticker_sheet(
+                            prompt=args.prompt,
+                            variations=args.variations,
+                            output=args.output if args.sheet else None,
+                            save_individuals=args.save_individuals or not args.sheet,
+                            individual_prefix=Path(args.output).stem
+                            if not args.sheet
+                            else None,
+                            aspect_ratio=args.aspect_ratio,
+                            input_images=args.images,
+                            api_key=args.api_key,
+                            edge_threshold=args.edge_threshold,
+                            columns=args.columns,
+                            padding=args.padding,
+                            style=args.style,
+                            output_format=args.format,
+                            quality=args.quality,
+                            lossless=lossless,
+                            resize=args.resize,
+                            resize_exact=args.resize_exact,
+                            hue_center=args.hue_center,
+                            hue_range=args.hue_range,
+                            min_saturation=args.min_saturation,
+                            min_value=args.min_value,
+                            green_threshold=args.green_threshold,
+                            sticker_max_retries=args.max_retries,
+                            sticker_retry_delay=args.retry_delay,
+                            save_intermediates=save_intermediates,
+                            max_workers=args.max_workers,
+                            progress_callback=pbar.update,
+                        )
 
                 if result.failed_indices:
                     logger.warning(
