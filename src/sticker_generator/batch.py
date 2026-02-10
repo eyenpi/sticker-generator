@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sticker_generator.core import _build_output_format, create_sticker, process_image
 from sticker_generator.image_processing import validate_transparency
@@ -70,6 +71,36 @@ def parse_prompt_file(file_path: str | PathLike) -> list[str]:
     return prompts
 
 
+def _generate_single_batch_item(item: BatchItem, **kwargs: Any) -> BatchItem:
+    """Generate a single sticker for a batch item.
+
+    Catches exceptions internally and stores them in item.error.
+
+    Args:
+        item: BatchItem with index, source (prompt), and output_path set.
+        **kwargs: Forwarded to create_sticker().
+
+    Returns:
+        The same BatchItem, with error set on failure.
+    """
+    try:
+        logger.info("Batch generate: %d - %s", item.index + 1, item.source)
+        image = create_sticker(prompt=item.source, **kwargs)
+
+        metrics = validate_transparency(image)
+        if metrics.has_quality_warning:
+            logger.warning(
+                "Quality warning for item %d: %s",
+                item.index + 1,
+                metrics.warning_message,
+            )
+    except Exception as e:
+        item.error = str(e)
+        logger.error("Failed item %d: %s", item.index + 1, e)
+
+    return item
+
+
 def batch_generate(
     prompts: list[str],
     output_dir: str | PathLike,
@@ -93,6 +124,7 @@ def batch_generate(
     delay_between_requests: float = 1.0,
     strict: bool = False,
     save_intermediates: str | PathLike | None = None,
+    max_workers: int = 1,
 ) -> BatchResult:
     """Generate stickers from a list of prompts.
 
@@ -119,6 +151,8 @@ def batch_generate(
         delay_between_requests: Seconds to wait between API calls.
         strict: If True, stop on first failure.
         save_intermediates: Directory to save intermediate images.
+        max_workers: Maximum number of concurrent workers (default 1 for
+            sequential execution).
 
     Returns:
         BatchResult with successful and failed items.
@@ -131,62 +165,131 @@ def batch_generate(
 
     result = BatchResult(total=len(prompts))
 
+    # Pre-compute items with output paths
+    items: list[BatchItem] = []
     for i, prompt in enumerate(prompts):
         item = BatchItem(index=i, source=prompt)
         filename = f"sticker_{i + 1:03d}{ext}"
-        output_path = out_dir / filename
-        item.output_path = output_path
+        item.output_path = out_dir / filename
+        items.append(item)
 
-        logger.info("Batch generate: %d/%d - %s", i + 1, len(prompts), prompt)
+    effective_workers = max_workers
+    if strict and max_workers > 1:
+        logger.warning(
+            "Strict mode enabled: falling back to sequential execution "
+            "(max_workers=1 instead of %d)",
+            max_workers,
+        )
+        effective_workers = 1
 
-        try:
+    if effective_workers > 1:
+        logger.debug(
+            "Ignoring delay_between_requests=%.1f in concurrent mode "
+            "(max_workers=%d controls rate limiting)",
+            delay_between_requests,
+            effective_workers,
+        )
+
+        futures = []
+        with ThreadPoolExecutor(max_workers=effective_workers) as executor:
+            for item in items:
+                item_intermediates = None
+                if save_intermediates:
+                    item_intermediates = str(
+                        Path(save_intermediates) / f"batch_{item.index + 1:03d}"
+                    )
+
+                future = executor.submit(
+                    _generate_single_batch_item,
+                    item=item,
+                    output=str(item.output_path),
+                    aspect_ratio=aspect_ratio,
+                    input_images=input_images,
+                    api_key=api_key,
+                    edge_threshold=edge_threshold,
+                    style=style,
+                    output_format=output_format,
+                    quality=quality,
+                    lossless=lossless,
+                    resize=resize,
+                    resize_exact=resize_exact,
+                    hue_center=hue_center,
+                    hue_range=hue_range,
+                    min_saturation=min_saturation,
+                    min_value=min_value,
+                    green_threshold=green_threshold,
+                    max_retries=max_retries,
+                    retry_delay=retry_delay,
+                    save_intermediates=item_intermediates,
+                )
+                futures.append(future)
+
+        # Collect results in submission order
+        for future in futures:
+            item = future.result()
+            if item.error is None:
+                result.successful.append(item)
+            else:
+                result.failed.append(item)
+    else:
+        for item in items:
             item_intermediates = None
             if save_intermediates:
                 item_intermediates = str(
-                    Path(save_intermediates) / f"batch_{i + 1:03d}"
+                    Path(save_intermediates) / f"batch_{item.index + 1:03d}"
                 )
 
-            image = create_sticker(
-                prompt=prompt,
-                output=str(output_path),
-                aspect_ratio=aspect_ratio,
-                input_images=input_images,
-                api_key=api_key,
-                edge_threshold=edge_threshold,
-                style=style,
-                output_format=output_format,
-                quality=quality,
-                lossless=lossless,
-                resize=resize,
-                resize_exact=resize_exact,
-                hue_center=hue_center,
-                hue_range=hue_range,
-                min_saturation=min_saturation,
-                min_value=min_value,
-                green_threshold=green_threshold,
-                max_retries=max_retries,
-                retry_delay=retry_delay,
-                save_intermediates=item_intermediates,
+            logger.info(
+                "Batch generate: %d/%d - %s",
+                item.index + 1,
+                len(prompts),
+                item.source,
             )
 
-            metrics = validate_transparency(image)
-            if metrics.has_quality_warning:
-                logger.warning(
-                    "Quality warning for item %d: %s", i + 1, metrics.warning_message
+            try:
+                image = create_sticker(
+                    prompt=item.source,
+                    output=str(item.output_path),
+                    aspect_ratio=aspect_ratio,
+                    input_images=input_images,
+                    api_key=api_key,
+                    edge_threshold=edge_threshold,
+                    style=style,
+                    output_format=output_format,
+                    quality=quality,
+                    lossless=lossless,
+                    resize=resize,
+                    resize_exact=resize_exact,
+                    hue_center=hue_center,
+                    hue_range=hue_range,
+                    min_saturation=min_saturation,
+                    min_value=min_value,
+                    green_threshold=green_threshold,
+                    max_retries=max_retries,
+                    retry_delay=retry_delay,
+                    save_intermediates=item_intermediates,
                 )
 
-            result.successful.append(item)
-        except Exception as e:
-            item.error = str(e)
-            result.failed.append(item)
-            logger.error("Failed item %d: %s", i + 1, e)
+                metrics = validate_transparency(image)
+                if metrics.has_quality_warning:
+                    logger.warning(
+                        "Quality warning for item %d: %s",
+                        item.index + 1,
+                        metrics.warning_message,
+                    )
 
-            if strict:
-                logger.error("Stopping batch (--strict mode)")
-                break
+                result.successful.append(item)
+            except Exception as e:
+                item.error = str(e)
+                result.failed.append(item)
+                logger.error("Failed item %d: %s", item.index + 1, e)
 
-        if i < len(prompts) - 1:
-            time.sleep(delay_between_requests)
+                if strict:
+                    logger.error("Stopping batch (--strict mode)")
+                    break
+
+            if item.index < len(prompts) - 1:
+                time.sleep(delay_between_requests)
 
     logger.info(
         "Batch generate complete: %d/%d successful",
@@ -194,6 +297,36 @@ def batch_generate(
         result.total,
     )
     return result
+
+
+def _process_single_image(item: BatchItem, **kwargs: Any) -> BatchItem:
+    """Process a single image for batch processing.
+
+    Catches exceptions internally and stores them in item.error.
+
+    Args:
+        item: BatchItem with index, source (input path), and output_path set.
+        **kwargs: Forwarded to process_image().
+
+    Returns:
+        The same BatchItem, with error set on failure.
+    """
+    try:
+        logger.info("Batch process: %d - %s", item.index + 1, Path(item.source).name)
+        image = process_image(input_path=item.source, **kwargs)
+
+        metrics = validate_transparency(image)
+        if metrics.has_quality_warning:
+            logger.warning(
+                "Quality warning for %s: %s",
+                Path(item.source).name,
+                metrics.warning_message,
+            )
+    except Exception as e:
+        item.error = str(e)
+        logger.error("Failed %s: %s", Path(item.source).name, e)
+
+    return item
 
 
 def batch_process_images(
@@ -212,6 +345,7 @@ def batch_process_images(
     green_threshold: float = 1.1,
     strict: bool = False,
     save_intermediates: str | PathLike | None = None,
+    max_workers: int = 1,
 ) -> BatchResult:
     """Process all images in a directory by removing green backgrounds.
 
@@ -231,6 +365,8 @@ def batch_process_images(
         green_threshold: Ratio threshold for aggressive green removal.
         strict: If True, stop on first failure.
         save_intermediates: Directory to save intermediate images.
+        max_workers: Maximum number of concurrent workers (default 1 for
+            sequential execution).
 
     Returns:
         BatchResult with successful and failed items.
@@ -256,15 +392,12 @@ def batch_process_images(
     fmt = _build_output_format(output_format, "output.png", quality, lossless)
     ext = fmt.extension
 
-    # Track used stems for collision avoidance
+    # Pre-compute items with output paths (collision avoidance)
     used_stems: dict[str, int] = {}
-
-    result = BatchResult(total=len(image_files))
-
+    items: list[BatchItem] = []
     for i, image_file in enumerate(image_files):
         item = BatchItem(index=i, source=str(image_file))
 
-        # Collision avoidance for output filenames
         stem = image_file.stem
         if stem in used_stems:
             used_stems[stem] += 1
@@ -273,54 +406,106 @@ def batch_process_images(
             used_stems[stem] = 1
             output_filename = f"{stem}{ext}"
 
-        output_path = out_dir / output_filename
-        item.output_path = output_path
+        item.output_path = out_dir / output_filename
+        items.append(item)
 
-        logger.info(
-            "Batch process: %d/%d - %s", i + 1, len(image_files), image_file.name
+    result = BatchResult(total=len(image_files))
+
+    effective_workers = max_workers
+    if strict and max_workers > 1:
+        logger.warning(
+            "Strict mode enabled: falling back to sequential execution "
+            "(max_workers=1 instead of %d)",
+            max_workers,
         )
+        effective_workers = 1
 
-        try:
+    if effective_workers > 1:
+        futures = []
+        with ThreadPoolExecutor(max_workers=effective_workers) as executor:
+            for item in items:
+                item_intermediates = None
+                if save_intermediates:
+                    item_intermediates = str(
+                        Path(save_intermediates) / f"batch_{item.index + 1:03d}"
+                    )
+
+                future = executor.submit(
+                    _process_single_image,
+                    item=item,
+                    output=str(item.output_path),
+                    edge_threshold=edge_threshold,
+                    output_format=output_format,
+                    quality=quality,
+                    lossless=lossless,
+                    resize=resize,
+                    resize_exact=resize_exact,
+                    hue_center=hue_center,
+                    hue_range=hue_range,
+                    min_saturation=min_saturation,
+                    min_value=min_value,
+                    green_threshold=green_threshold,
+                    save_intermediates=item_intermediates,
+                )
+                futures.append(future)
+
+        # Collect results in submission order
+        for future in futures:
+            item = future.result()
+            if item.error is None:
+                result.successful.append(item)
+            else:
+                result.failed.append(item)
+    else:
+        for item in items:
             item_intermediates = None
             if save_intermediates:
                 item_intermediates = str(
-                    Path(save_intermediates) / f"batch_{i + 1:03d}"
+                    Path(save_intermediates) / f"batch_{item.index + 1:03d}"
                 )
 
-            image = process_image(
-                input_path=str(image_file),
-                output=str(output_path),
-                edge_threshold=edge_threshold,
-                output_format=output_format,
-                quality=quality,
-                lossless=lossless,
-                resize=resize,
-                resize_exact=resize_exact,
-                hue_center=hue_center,
-                hue_range=hue_range,
-                min_saturation=min_saturation,
-                min_value=min_value,
-                green_threshold=green_threshold,
-                save_intermediates=item_intermediates,
+            logger.info(
+                "Batch process: %d/%d - %s",
+                item.index + 1,
+                len(image_files),
+                Path(item.source).name,
             )
 
-            metrics = validate_transparency(image)
-            if metrics.has_quality_warning:
-                logger.warning(
-                    "Quality warning for %s: %s",
-                    image_file.name,
-                    metrics.warning_message,
+            try:
+                image = process_image(
+                    input_path=item.source,
+                    output=str(item.output_path),
+                    edge_threshold=edge_threshold,
+                    output_format=output_format,
+                    quality=quality,
+                    lossless=lossless,
+                    resize=resize,
+                    resize_exact=resize_exact,
+                    hue_center=hue_center,
+                    hue_range=hue_range,
+                    min_saturation=min_saturation,
+                    min_value=min_value,
+                    green_threshold=green_threshold,
+                    save_intermediates=item_intermediates,
                 )
 
-            result.successful.append(item)
-        except Exception as e:
-            item.error = str(e)
-            result.failed.append(item)
-            logger.error("Failed %s: %s", image_file.name, e)
+                metrics = validate_transparency(image)
+                if metrics.has_quality_warning:
+                    logger.warning(
+                        "Quality warning for %s: %s",
+                        Path(item.source).name,
+                        metrics.warning_message,
+                    )
 
-            if strict:
-                logger.error("Stopping batch (--strict mode)")
-                break
+                result.successful.append(item)
+            except Exception as e:
+                item.error = str(e)
+                result.failed.append(item)
+                logger.error("Failed %s: %s", Path(item.source).name, e)
+
+                if strict:
+                    logger.error("Stopping batch (--strict mode)")
+                    break
 
     logger.info(
         "Batch process complete: %d/%d successful",

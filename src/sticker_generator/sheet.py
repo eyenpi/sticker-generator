@@ -5,9 +5,10 @@ from __future__ import annotations
 import logging
 import math
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from PIL import Image
 
@@ -104,6 +105,54 @@ def create_sheet_image(
     return sheet
 
 
+def _generate_single_variation(
+    index: int,
+    total: int,
+    variation_retries: int,
+    variation_retry_delay: float,
+    **kwargs: Any,
+) -> Image.Image | None:
+    """Generate a single sticker variation with retries.
+
+    Args:
+        index: Zero-based variation index.
+        total: Total number of variations (for logging).
+        variation_retries: Number of variation-level retries.
+        variation_retry_delay: Delay between retries in seconds.
+        **kwargs: Forwarded to create_sticker().
+
+    Returns:
+        PIL Image on success, None on failure.
+    """
+    retries = 0
+    while retries <= variation_retries:
+        try:
+            sticker = create_sticker(**kwargs)
+            logger.info("Generated variation %d/%d", index + 1, total)
+            return sticker
+        except Exception as e:
+            retries += 1
+            if retries > variation_retries:
+                attempts = variation_retries + 1
+                logger.warning(
+                    "Failed variation %d after %d attempts: %s",
+                    index + 1,
+                    attempts,
+                    e,
+                )
+                return None
+            else:
+                logger.warning(
+                    "Retry %d/%d for variation %d: %s",
+                    retries,
+                    variation_retries,
+                    index + 1,
+                    e,
+                )
+                time.sleep(variation_retry_delay * 2)
+    return None
+
+
 def generate_sticker_sheet(
     prompt: str,
     variations: int = 4,
@@ -132,6 +181,7 @@ def generate_sticker_sheet(
     sticker_max_retries: int = 3,
     sticker_retry_delay: float = 1.0,
     save_intermediates: str | PathLike | None = None,
+    max_workers: int = 1,
 ) -> SheetResult:
     """Generate multiple sticker variations and combine into a sheet.
 
@@ -167,6 +217,9 @@ def generate_sticker_sheet(
             responses.
         sticker_retry_delay: Initial delay in seconds for per-call retries
             (default 1.0). Doubles with each retry (exponential backoff).
+        save_intermediates: Directory to save intermediate images for debugging.
+        max_workers: Maximum number of concurrent workers (default 1 for
+            sequential execution).
 
     Returns:
         SheetResult with stickers, sheet image, and failed indices.
@@ -174,17 +227,28 @@ def generate_sticker_sheet(
     stickers: list[Image.Image] = []
     failed_indices: list[int] = []
 
-    for i in range(variations):
-        retries = 0
-        success = False
+    if max_workers > 1:
+        logger.debug(
+            "Ignoring delay_between_requests=%.1f in concurrent mode "
+            "(max_workers=%d controls rate limiting)",
+            delay_between_requests,
+            max_workers,
+        )
 
-        while retries <= max_retries and not success:
-            try:
+        # Build kwargs for each variation
+        futures = []
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            for i in range(variations):
                 variation_intermediates = None
                 if save_intermediates:
                     variation_intermediates = f"{save_intermediates}/variation_{i + 1}"
 
-                sticker = create_sticker(
+                future = executor.submit(
+                    _generate_single_variation,
+                    index=i,
+                    total=variations,
+                    variation_retries=max_retries,
+                    variation_retry_delay=sticker_retry_delay,
                     prompt=prompt,
                     output=None,
                     aspect_ratio=aspect_ratio,
@@ -203,32 +267,52 @@ def generate_sticker_sheet(
                     retry_delay=sticker_retry_delay,
                     save_intermediates=variation_intermediates,
                 )
-                stickers.append(sticker)
-                logger.info("Generated variation %d/%d", i + 1, variations)
-                success = True
-            except Exception as e:
-                retries += 1
-                if retries > max_retries:
-                    attempts = max_retries + 1
-                    logger.warning(
-                        "Failed variation %d after %d attempts: %s",
-                        i + 1,
-                        attempts,
-                        e,
-                    )
-                    failed_indices.append(i)
-                else:
-                    logger.warning(
-                        "Retry %d/%d for variation %d: %s",
-                        retries,
-                        max_retries,
-                        i + 1,
-                        e,
-                    )
-                    time.sleep(delay_between_requests * 2)
+                futures.append((i, future))
 
-        if i < variations - 1 and success:
-            time.sleep(delay_between_requests)
+        # Collect results in submission order
+        for i, future in futures:
+            result = future.result()
+            if result is not None:
+                stickers.append(result)
+            else:
+                failed_indices.append(i)
+    else:
+        for i in range(variations):
+            variation_intermediates = None
+            if save_intermediates:
+                variation_intermediates = f"{save_intermediates}/variation_{i + 1}"
+
+            result = _generate_single_variation(
+                index=i,
+                total=variations,
+                variation_retries=max_retries,
+                variation_retry_delay=sticker_retry_delay,
+                prompt=prompt,
+                output=None,
+                aspect_ratio=aspect_ratio,
+                input_images=input_images,
+                api_key=api_key,
+                edge_threshold=edge_threshold,
+                style=style,
+                resize=resize,
+                resize_exact=resize_exact,
+                hue_center=hue_center,
+                hue_range=hue_range,
+                min_saturation=min_saturation,
+                min_value=min_value,
+                green_threshold=green_threshold,
+                max_retries=sticker_max_retries,
+                retry_delay=sticker_retry_delay,
+                save_intermediates=variation_intermediates,
+            )
+
+            if result is not None:
+                stickers.append(result)
+            else:
+                failed_indices.append(i)
+
+            if i < variations - 1:
+                time.sleep(delay_between_requests)
 
     sheet = None
     if stickers:
