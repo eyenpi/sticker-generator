@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import io
 import mimetypes
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -93,8 +94,16 @@ def generate_sticker(
     input_images: list[str | PathLike] | None = None,
     api_key: str | None = None,
     style: str | None = None,
+    max_retries: int = 3,
+    retry_delay: float = 1.0,
 ) -> Image.Image:
     """Generate a sticker image with chromakey green background.
+
+    Uses two layers of retry protection:
+    1. HTTP-level retries via google-genai's built-in HttpRetryOptions for
+       transient errors (429 rate limits, 500/502/503/504 server errors).
+    2. Application-level retries for when the API returns a successful response
+       but contains no image (only text).
 
     Args:
         prompt: Description of the sticker to generate.
@@ -102,14 +111,30 @@ def generate_sticker(
         input_images: Optional list of reference image paths.
         api_key: Optional Gemini API key (uses GEMINI_API_KEY env var if not provided).
         style: Optional style preset name (e.g., "kawaii", "minimal", "3d").
+        max_retries: Maximum number of retries for failed generations (default 3).
+            Applies to both HTTP errors and empty responses.
+        retry_delay: Initial delay in seconds between retries (default 1.0).
+            Doubles with each retry (exponential backoff).
 
     Returns:
         PIL Image with green background (before processing).
 
     Raises:
-        ValueError: If no image was generated.
+        ValueError: If no image was generated after all retries.
     """
-    client = genai.Client(api_key=api_key) if api_key else genai.Client()
+    retry_options = genai.types.HttpRetryOptions(
+        attempts=max_retries + 1,
+        initial_delay=retry_delay,
+        max_delay=retry_delay * (2**max_retries),
+        exp_base=2,
+        jitter=retry_delay,
+    )
+    http_options = genai.types.HttpOptions(retry_options=retry_options)
+
+    if api_key:
+        client = genai.Client(api_key=api_key, http_options=http_options)
+    else:
+        client = genai.Client(http_options=http_options)
 
     styled_prompt = format_prompt_with_style(prompt, style)
     enhanced_prompt = CHROMAKEY_PROMPT_TEMPLATE.format(prompt=styled_prompt)
@@ -122,23 +147,32 @@ def generate_sticker(
         content_list.append(enhanced_prompt)
         input_content = content_list
 
-    response = client.models.generate_content(
-        model=MODEL_ID,
-        contents=input_content,
-        config=genai.types.GenerateContentConfig(
-            response_modalities=["TEXT", "IMAGE"],
-        ),
-    )
+    for attempt in range(max_retries + 1):
+        response = client.models.generate_content(
+            model=MODEL_ID,
+            contents=input_content,
+            config=genai.types.GenerateContentConfig(
+                response_modalities=["TEXT", "IMAGE"],
+            ),
+        )
 
-    if response.candidates:
-        for part in response.candidates[0].content.parts:  # type: ignore[union-attr]
-            if part.inline_data is not None:
-                print(f"Found image: mime_type={part.inline_data.mime_type}")
-                return decode_image(part.inline_data.data)  # type: ignore[arg-type]
-            elif part.text:
-                print(f"Text response: {part.text[:200]}...")
+        if response.candidates:
+            for part in response.candidates[0].content.parts:  # type: ignore[union-attr]
+                if part.inline_data is not None:
+                    print(f"Found image: mime_type={part.inline_data.mime_type}")
+                    return decode_image(part.inline_data.data)  # type: ignore[arg-type]
+                elif part.text:
+                    print(f"Text response: {part.text[:200]}...")
 
-    raise ValueError("No image was generated")
+        if attempt < max_retries:
+            delay = retry_delay * (2**attempt)
+            print(
+                f"No image in response, retrying ({attempt + 1}/{max_retries})..."
+                f" waiting {delay:.1f}s"
+            )
+            time.sleep(delay)
+
+    raise ValueError(f"No image was generated after {max_retries + 1} attempt(s)")
 
 
 def process_image(
@@ -238,6 +272,8 @@ def create_sticker(
     min_saturation: float = 25,
     min_value: float = 40,
     green_threshold: float = 1.1,
+    max_retries: int = 3,
+    retry_delay: float = 1.0,
 ) -> Image.Image:
     """Generate a sticker with transparent background.
 
@@ -266,6 +302,10 @@ def create_sticker(
         min_value: Minimum brightness % to consider green (default 40).
         green_threshold: Ratio threshold for aggressive green removal
             (default 1.1). Higher values are more conservative.
+        max_retries: Maximum number of retries for failed generations (default 3).
+            Applies to both HTTP errors and empty responses.
+        retry_delay: Initial delay in seconds between retries (default 1.0).
+            Doubles with each retry (exponential backoff).
 
     Returns:
         PIL Image with transparent background.
@@ -276,6 +316,8 @@ def create_sticker(
         input_images=input_images,
         api_key=api_key,
         style=style,
+        max_retries=max_retries,
+        retry_delay=retry_delay,
     )
 
     if save_raw and output:

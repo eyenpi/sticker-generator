@@ -187,6 +187,24 @@ def main() -> int:
         help="Exit with error if quality validation fails",
     )
 
+    # Retry parameters
+    retry_group = parser.add_argument_group(
+        "retry options",
+        "Control retry behavior for API calls",
+    )
+    retry_group.add_argument(
+        "--max-retries",
+        type=int,
+        default=3,
+        help="Max retries for failed API calls (default: 3)",
+    )
+    retry_group.add_argument(
+        "--retry-delay",
+        type=float,
+        default=1.0,
+        help="Initial delay between retries in seconds (default: 1.0)",
+    )
+
     # Green removal tuning parameters
     green_group = parser.add_argument_group(
         "green removal tuning",
@@ -241,6 +259,15 @@ def main() -> int:
         lossless = True
     elif args.lossy:
         lossless = False
+
+    # Validate retry parameters
+    if args.max_retries < 0:
+        print("Error: --max-retries must be non-negative", file=sys.stderr)
+        return 1
+
+    if args.retry_delay < 0:
+        print("Error: --retry-delay must be non-negative", file=sys.stderr)
+        return 1
 
     # Validate that either prompt or --process is provided
     if args.process is None and args.prompt is None:
@@ -313,6 +340,8 @@ def main() -> int:
                     min_saturation=args.min_saturation,
                     min_value=args.min_value,
                     green_threshold=args.green_threshold,
+                    sticker_max_retries=args.max_retries,
+                    sticker_retry_delay=args.retry_delay,
                 )
 
                 if result.failed_indices:
@@ -345,6 +374,8 @@ def main() -> int:
                     min_saturation=args.min_saturation,
                     min_value=args.min_value,
                     green_threshold=args.green_threshold,
+                    max_retries=args.max_retries,
+                    retry_delay=args.retry_delay,
                 )
                 print(f"Sticker saved to: {args.output}")
 

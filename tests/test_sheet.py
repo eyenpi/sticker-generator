@@ -255,6 +255,8 @@ class TestGenerateStickerSheet:
             min_saturation=25,
             min_value=40,
             green_threshold=1.1,
+            max_retries=3,
+            retry_delay=1.0,
         )
 
     @patch("sticker_generator.sheet.create_sticker")
@@ -308,6 +310,8 @@ class TestGenerateStickerSheet:
             min_saturation=25,
             min_value=40,
             green_threshold=1.1,
+            max_retries=3,
+            retry_delay=1.0,
         )
 
 

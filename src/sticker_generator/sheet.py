@@ -126,6 +126,8 @@ def generate_sticker_sheet(
     min_saturation: float = 25,
     min_value: float = 40,
     green_threshold: float = 1.1,
+    sticker_max_retries: int = 3,
+    sticker_retry_delay: float = 1.0,
 ) -> SheetResult:
     """Generate multiple sticker variations and combine into a sheet.
 
@@ -142,7 +144,7 @@ def generate_sticker_sheet(
         columns: Number of columns in grid (auto if None).
         padding: Padding between stickers in pixels.
         delay_between_requests: Seconds to wait between API calls.
-        max_retries: Number of retries for failed generations.
+        max_retries: Number of variation-level retries for failed generations.
         style: Optional style for the stickers.
         output_format: Output format preset name ("png", "webp", "webp-lossy").
             Auto-detected from filename extension if None.
@@ -156,6 +158,11 @@ def generate_sticker_sheet(
         min_value: Minimum brightness % to consider green (default 40).
         green_threshold: Ratio threshold for aggressive green removal
             (default 1.1).
+        sticker_max_retries: Max retries per API call within each sticker
+            generation (default 3). Handles transient HTTP errors and empty
+            responses.
+        sticker_retry_delay: Initial delay in seconds for per-call retries
+            (default 1.0). Doubles with each retry (exponential backoff).
 
     Returns:
         SheetResult with stickers, sheet image, and failed indices.
@@ -184,6 +191,8 @@ def generate_sticker_sheet(
                     min_saturation=min_saturation,
                     min_value=min_value,
                     green_threshold=green_threshold,
+                    max_retries=sticker_max_retries,
+                    retry_delay=sticker_retry_delay,
                 )
                 stickers.append(sticker)
                 print(f"Generated variation {i + 1}/{variations}")
