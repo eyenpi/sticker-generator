@@ -39,7 +39,7 @@ This package generates stickers with transparent backgrounds using Google's Gemi
 5. **Quality Validation** (`image_processing.py`): `validate_transparency()` computes `TransparencyMetrics` to detect bad results (>95% transparent = subject removed, <5% transparent = green removal failed)
 
 Key modules:
-- `core.py`: Gemini API interaction, prompt engineering, `create_sticker()` and `process_image()` functions
+- `core.py`: Gemini API interaction, prompt engineering, `create_sticker()` and `process_image()` functions. Retry logic uses google-genai's built-in `HttpRetryOptions` for HTTP errors plus application-level retry loop for empty responses
 - `image_processing.py`: Pure image processing (no API calls), HSV conversion, green removal, edge cleanup, resize, `validate_transparency()`, `TransparencyMetrics` dataclass, `save_transparent_image()`
 - `formats.py`: Output format configuration (`OutputFormat` dataclass, presets for png/webp/webp-lossy)
 - `styles.py`: Style presets that modify prompts (kawaii, minimal, 3d, pixel-art, retro, watercolor)
@@ -51,6 +51,7 @@ Key modules:
 - **Process existing images**: `process_image()` / `--process` CLI flag removes green backgrounds from existing images without Gemini generation
 - **Configurable green removal**: HSV thresholds and aggressive green detection ratio are tunable via `create_sticker()` parameters and CLI flags (`--hue-center`, `--hue-range`, `--min-saturation`, `--min-value`, `--green-threshold`)
 - **Quality validation**: Automatic transparency analysis after processing; warns on bad results. `--strict` CLI flag exits non-zero on quality warnings
+- **Retry with exponential backoff**: Two-layer retry protection for API calls. HTTP-level retries via google-genai's `HttpRetryOptions` handle transient errors (429, 500, 502, 503, 504). Application-level retries handle cases where the API returns no image. Configurable via `max_retries`/`retry_delay` params or `--max-retries`/`--retry-delay` CLI flags
 
 ## Output Formats
 

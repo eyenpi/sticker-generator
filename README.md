@@ -82,6 +82,10 @@ sticker-generator "a cat" --strict
 
 # Tune green removal for tricky images
 sticker-generator "a cat" --hue-center 120 --hue-range 40 --min-saturation 30
+
+# Retry options for unreliable connections
+sticker-generator "a cat" --max-retries 5 --retry-delay 2.0
+sticker-generator "a cat" --max-retries 0  # Disable retries
 ```
 
 #### Available Styles
@@ -120,6 +124,15 @@ If green removal produces bad results (incomplete removal or subject removal), t
 | `--min-saturation` | 25 | Minimum saturation % to consider green |
 | `--min-value` | 40 | Minimum brightness % to consider green |
 | `--green-threshold` | 1.1 | Aggressive green ratio threshold (higher = more conservative) |
+
+#### Retry Options
+
+Failed API calls are automatically retried with exponential backoff. This handles transient HTTP errors (429 rate limits, 500/502/503/504 server errors) and cases where the API returns no image.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--max-retries` | 3 | Maximum number of retries for failed API calls |
+| `--retry-delay` | 1.0 | Initial delay between retries in seconds (doubles each retry) |
 
 #### Quality Validation
 
@@ -206,6 +219,14 @@ sticker = create_sticker(
     min_saturation=30,
     min_value=50,
     green_threshold=1.3
+)
+
+# Custom retry settings
+sticker = create_sticker(
+    prompt="a cute cat",
+    output="cat.png",
+    max_retries=5,     # More retries for unreliable connections
+    retry_delay=2.0    # Start with 2s delay, doubles each retry
 )
 ```
 
