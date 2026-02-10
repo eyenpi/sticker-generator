@@ -8,6 +8,7 @@ from pathlib import Path
 
 from sticker_generator.core import create_sticker, process_image
 from sticker_generator.formats import get_available_formats
+from sticker_generator.image_processing import validate_transparency
 from sticker_generator.sheet import generate_sticker_sheet
 from sticker_generator.styles import get_available_styles
 
@@ -180,6 +181,11 @@ def main() -> int:
         action="store_true",
         help="Force exact resize dimensions (may distort aspect ratio)",
     )
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Exit with error if quality validation fails",
+    )
 
     # Green removal tuning parameters
     green_group = parser.add_argument_group(
@@ -320,7 +326,7 @@ def main() -> int:
                 else:
                     print(f"Stickers saved with prefix: {Path(args.output).stem}")
             else:
-                create_sticker(
+                result_image = create_sticker(
                     prompt=args.prompt,
                     output=args.output,
                     aspect_ratio=args.aspect_ratio,
@@ -341,6 +347,15 @@ def main() -> int:
                     green_threshold=args.green_threshold,
                 )
                 print(f"Sticker saved to: {args.output}")
+
+                if args.strict:
+                    metrics = validate_transparency(result_image)
+                    if metrics.has_quality_warning:
+                        print(
+                            f"Error (--strict): {metrics.warning_message}",
+                            file=sys.stderr,
+                        )
+                        return 1
 
         return 0
 

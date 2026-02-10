@@ -8,11 +8,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Install dependencies (uses uv)
 uv sync
 
-# Run tests
-uv run pytest
+# Install with dev dependencies
+uv sync --extra dev
+
+# Run tests (must use python -m to pick up the correct venv)
+uv run python -m pytest
 
 # Run single test
-uv run pytest tests/test_image_processing.py::TestRemoveGreenScreenHsv::test_removes_green_background
+uv run python -m pytest tests/test_image_processing.py::TestRemoveGreenScreenHsv::test_removes_green_background
 
 # Lint and format
 uv run ruff check src tests
@@ -30,17 +33,24 @@ uv build
 This package generates stickers with transparent backgrounds using Google's Gemini AI. The workflow:
 
 1. **Generation** (`core.py`): Sends prompt to Gemini with instructions to use chromakey green (#00FF00) background
-2. **Green Removal** (`image_processing.py`): HSV-based detection removes green pixels, with optional aggressive pass for stubborn greens
+2. **Green Removal** (`image_processing.py`): HSV-based detection removes green pixels, with optional aggressive pass for stubborn greens. Parameters (hue_center, hue_range, min_saturation, min_value, green_threshold) are configurable.
 3. **Edge Cleanup** (`image_processing.py`): Thresholds alpha channel to remove semi-transparent halos
 4. **Resize** (`image_processing.py`): Optional resizing with LANCZOS resampling, aspect ratio preservation
+5. **Quality Validation** (`image_processing.py`): `validate_transparency()` computes `TransparencyMetrics` to detect bad results (>95% transparent = subject removed, <5% transparent = green removal failed)
 
 Key modules:
-- `core.py`: Gemini API interaction, prompt engineering, main `create_sticker()` function
-- `image_processing.py`: Pure image processing (no API calls), HSV conversion, green removal, edge cleanup, resize, `save_transparent_image()`
+- `core.py`: Gemini API interaction, prompt engineering, `create_sticker()` and `process_image()` functions
+- `image_processing.py`: Pure image processing (no API calls), HSV conversion, green removal, edge cleanup, resize, `validate_transparency()`, `TransparencyMetrics` dataclass, `save_transparent_image()`
 - `formats.py`: Output format configuration (`OutputFormat` dataclass, presets for png/webp/webp-lossy)
 - `styles.py`: Style presets that modify prompts (kawaii, minimal, 3d, pixel-art, retro, watercolor)
 - `sheet.py`: Sticker sheet generation - multiple variations combined into a grid
-- `cli.py`: Command-line interface wrapping `create_sticker()` and `generate_sticker_sheet()`
+- `cli.py`: Command-line interface wrapping `create_sticker()`, `process_image()`, and `generate_sticker_sheet()`
+
+## Key Features
+
+- **Process existing images**: `process_image()` / `--process` CLI flag removes green backgrounds from existing images without Gemini generation
+- **Configurable green removal**: HSV thresholds and aggressive green detection ratio are tunable via `create_sticker()` parameters and CLI flags (`--hue-center`, `--hue-range`, `--min-saturation`, `--min-value`, `--green-threshold`)
+- **Quality validation**: Automatic transparency analysis after processing; warns on bad results. `--strict` CLI flag exits non-zero on quality warnings
 
 ## Output Formats
 
