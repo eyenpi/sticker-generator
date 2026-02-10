@@ -186,10 +186,10 @@ class TestValidateTransparency:
 
 
 class TestCreateStickerValidation:
-    """Test that create_sticker prints quality warnings."""
+    """Test that create_sticker logs quality warnings."""
 
     @patch("sticker_generator.core.generate_sticker")
-    def test_warns_on_mostly_transparent(self, mock_gen, capsys):
+    def test_warns_on_mostly_transparent(self, mock_gen, caplog):
         from sticker_generator.core import create_sticker
 
         # Create an image that will be mostly transparent after processing
@@ -197,28 +197,29 @@ class TestCreateStickerValidation:
         img = Image.new("RGBA", (100, 100), (0, 255, 0, 255))
         mock_gen.return_value = img
 
-        create_sticker("test prompt")
+        with caplog.at_level("WARNING", logger="sticker_generator.core"):
+            create_sticker("test prompt")
 
-        captured = capsys.readouterr()
-        assert "Warning:" in captured.out
-        assert "subject may have been removed" in captured.out
+        assert any("subject may have been removed" in r.message for r in caplog.records)
 
     @patch("sticker_generator.core.generate_sticker")
-    def test_warns_on_mostly_opaque(self, mock_gen, capsys):
+    def test_warns_on_mostly_opaque(self, mock_gen, caplog):
         from sticker_generator.core import create_sticker
 
         # Create image with no green at all -> nothing removed -> mostly opaque
         img = Image.new("RGBA", (100, 100), (255, 0, 0, 255))
         mock_gen.return_value = img
 
-        create_sticker("test prompt")
+        with caplog.at_level("WARNING", logger="sticker_generator.core"):
+            create_sticker("test prompt")
 
-        captured = capsys.readouterr()
-        assert "Warning:" in captured.out
-        assert "green background removal may have failed" in captured.out
+        assert any(
+            "green background removal may have failed" in r.message
+            for r in caplog.records
+        )
 
     @patch("sticker_generator.core.generate_sticker")
-    def test_no_warning_on_good_result(self, mock_gen, capsys):
+    def test_no_warning_on_good_result(self, mock_gen, caplog):
         from sticker_generator.core import create_sticker
 
         # Green background with red subject -> good result
@@ -228,43 +229,48 @@ class TestCreateStickerValidation:
                 img.putpixel((x, y), (255, 0, 0, 255))
         mock_gen.return_value = img
 
-        create_sticker("test prompt")
+        with caplog.at_level("WARNING", logger="sticker_generator.core"):
+            create_sticker("test prompt")
 
-        captured = capsys.readouterr()
-        assert "subject may have been removed" not in captured.out
-        assert "green background removal may have failed" not in captured.out
+        assert not any(
+            "subject may have been removed" in r.message for r in caplog.records
+        )
+        assert not any(
+            "green background removal may have failed" in r.message
+            for r in caplog.records
+        )
 
 
 class TestCLIStrictFlag:
     """Tests for --strict CLI flag."""
 
     @patch("sticker_generator.cli.create_sticker")
-    def test_strict_fails_on_mostly_transparent(self, mock_create, capsys):
+    def test_strict_fails_on_mostly_transparent(self, mock_create, caplog):
         from sticker_generator.cli import main
 
         # Return a fully transparent image
         mock_create.return_value = Image.new("RGBA", (100, 100), (0, 0, 0, 0))
 
-        with patch.object(sys, "argv", ["prog", "test prompt", "--strict"]):
-            result = main()
+        with caplog.at_level("ERROR", logger="sticker_generator"):
+            with patch.object(sys, "argv", ["prog", "test prompt", "--strict"]):
+                result = main()
 
         assert result == 1
-        captured = capsys.readouterr()
-        assert "--strict" in captured.err
+        assert any("--strict" in r.message for r in caplog.records)
 
     @patch("sticker_generator.cli.create_sticker")
-    def test_strict_fails_on_mostly_opaque(self, mock_create, capsys):
+    def test_strict_fails_on_mostly_opaque(self, mock_create, caplog):
         from sticker_generator.cli import main
 
         # Return a fully opaque image
         mock_create.return_value = Image.new("RGBA", (100, 100), (255, 0, 0, 255))
 
-        with patch.object(sys, "argv", ["prog", "test prompt", "--strict"]):
-            result = main()
+        with caplog.at_level("ERROR", logger="sticker_generator"):
+            with patch.object(sys, "argv", ["prog", "test prompt", "--strict"]):
+                result = main()
 
         assert result == 1
-        captured = capsys.readouterr()
-        assert "--strict" in captured.err
+        assert any("--strict" in r.message for r in caplog.records)
 
     @patch("sticker_generator.cli.create_sticker")
     def test_strict_passes_on_good_result(self, mock_create):

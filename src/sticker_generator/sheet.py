@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import math
 import time
 from dataclasses import dataclass, field
@@ -15,6 +16,8 @@ from sticker_generator.image_processing import save_transparent_image
 
 if TYPE_CHECKING:
     from os import PathLike
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -128,6 +131,7 @@ def generate_sticker_sheet(
     green_threshold: float = 1.1,
     sticker_max_retries: int = 3,
     sticker_retry_delay: float = 1.0,
+    save_intermediates: str | PathLike | None = None,
 ) -> SheetResult:
     """Generate multiple sticker variations and combine into a sheet.
 
@@ -176,6 +180,10 @@ def generate_sticker_sheet(
 
         while retries <= max_retries and not success:
             try:
+                variation_intermediates = None
+                if save_intermediates:
+                    variation_intermediates = f"{save_intermediates}/variation_{i + 1}"
+
                 sticker = create_sticker(
                     prompt=prompt,
                     output=None,
@@ -193,18 +201,30 @@ def generate_sticker_sheet(
                     green_threshold=green_threshold,
                     max_retries=sticker_max_retries,
                     retry_delay=sticker_retry_delay,
+                    save_intermediates=variation_intermediates,
                 )
                 stickers.append(sticker)
-                print(f"Generated variation {i + 1}/{variations}")
+                logger.info("Generated variation %d/%d", i + 1, variations)
                 success = True
             except Exception as e:
                 retries += 1
                 if retries > max_retries:
                     attempts = max_retries + 1
-                    print(f"Failed variation {i + 1} after {attempts} attempts: {e}")
+                    logger.warning(
+                        "Failed variation %d after %d attempts: %s",
+                        i + 1,
+                        attempts,
+                        e,
+                    )
                     failed_indices.append(i)
                 else:
-                    print(f"Retry {retries}/{max_retries} for variation {i + 1}: {e}")
+                    logger.warning(
+                        "Retry %d/%d for variation %d: %s",
+                        retries,
+                        max_retries,
+                        i + 1,
+                        e,
+                    )
                     time.sleep(delay_between_requests * 2)
 
         if i < variations - 1 and success:

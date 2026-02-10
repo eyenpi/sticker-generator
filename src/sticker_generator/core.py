@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import io
+import logging
 import mimetypes
 import time
 from pathlib import Path
@@ -25,6 +26,8 @@ from sticker_generator.styles import format_prompt_with_style
 
 if TYPE_CHECKING:
     from os import PathLike
+
+logger = logging.getLogger(__name__)
 
 MODEL_ID = "gemini-2.5-flash-image"
 
@@ -159,16 +162,20 @@ def generate_sticker(
         if response.candidates:
             for part in response.candidates[0].content.parts:  # type: ignore[union-attr]
                 if part.inline_data is not None:
-                    print(f"Found image: mime_type={part.inline_data.mime_type}")
+                    logger.debug(
+                        "Found image: mime_type=%s", part.inline_data.mime_type
+                    )
                     return decode_image(part.inline_data.data)  # type: ignore[arg-type]
                 elif part.text:
-                    print(f"Text response: {part.text[:200]}...")
+                    logger.debug("Text response: %s...", part.text[:200])
 
         if attempt < max_retries:
             delay = retry_delay * (2**attempt)
-            print(
-                f"No image in response, retrying ({attempt + 1}/{max_retries})..."
-                f" waiting {delay:.1f}s"
+            logger.warning(
+                "No image in response, retrying (%d/%d)... waiting %.1fs",
+                attempt + 1,
+                max_retries,
+                delay,
             )
             time.sleep(delay)
 
@@ -189,6 +196,7 @@ def process_image(
     min_saturation: float = 25,
     min_value: float = 40,
     green_threshold: float = 1.1,
+    save_intermediates: str | PathLike | None = None,
 ) -> Image.Image:
     """Process an existing image by removing its green background.
 
@@ -217,7 +225,15 @@ def process_image(
     Returns:
         PIL Image with transparent background.
     """
+    logger.debug("Processing image: %s", input_path)
+
     raw_image = Image.open(input_path)
+
+    if save_intermediates:
+        intermediates_dir = Path(save_intermediates)
+        intermediates_dir.mkdir(parents=True, exist_ok=True)
+        raw_image.save(intermediates_dir / "01_input_loaded.png")
+        logger.debug("Saved intermediate: 01_input_loaded.png")
 
     # HSV-based green removal
     transparent_image = remove_green_screen_hsv(
@@ -230,6 +246,10 @@ def process_image(
         erosion_iterations=0,
     )
 
+    if save_intermediates:
+        transparent_image.save(intermediates_dir / "02_after_hsv_removal.png")
+        logger.debug("Saved intermediate: 02_after_hsv_removal.png")
+
     # Second pass: aggressive removal for remaining greens
     transparent_image = remove_green_screen_aggressive(
         transparent_image,
@@ -237,14 +257,25 @@ def process_image(
         edge_pixels=1,
     )
 
+    if save_intermediates:
+        transparent_image.save(intermediates_dir / "03_after_aggressive_removal.png")
+        logger.debug("Saved intermediate: 03_after_aggressive_removal.png")
+
     # Edge cleanup
     transparent_image = cleanup_edges(transparent_image, threshold=edge_threshold)
+
+    if save_intermediates:
+        transparent_image.save(intermediates_dir / "04_after_edge_cleanup.png")
+        logger.debug("Saved intermediate: 04_after_edge_cleanup.png")
 
     # Optional resize
     if resize is not None:
         transparent_image = resize_image(
             transparent_image, resize, maintain_aspect=not resize_exact
         )
+        if save_intermediates:
+            transparent_image.save(intermediates_dir / "05_after_resize.png")
+            logger.debug("Saved intermediate: 05_after_resize.png")
 
     if output:
         fmt = _build_output_format(output_format, str(output), quality, lossless)
@@ -274,6 +305,7 @@ def create_sticker(
     green_threshold: float = 1.1,
     max_retries: int = 3,
     retry_delay: float = 1.0,
+    save_intermediates: str | PathLike | None = None,
 ) -> Image.Image:
     """Generate a sticker with transparent background.
 
@@ -310,6 +342,8 @@ def create_sticker(
     Returns:
         PIL Image with transparent background.
     """
+    logger.debug("Creating sticker: prompt=%r, style=%s", prompt, style)
+
     raw_image = generate_sticker(
         prompt=prompt,
         aspect_ratio=aspect_ratio,
@@ -325,6 +359,12 @@ def create_sticker(
         raw_filename = output_path.with_stem(output_path.stem + "_raw")
         raw_image.save(raw_filename)
 
+    if save_intermediates:
+        intermediates_dir = Path(save_intermediates)
+        intermediates_dir.mkdir(parents=True, exist_ok=True)
+        raw_image.save(intermediates_dir / "01_raw_from_api.png")
+        logger.debug("Saved intermediate: 01_raw_from_api.png")
+
     # HSV-based green removal
     transparent_image = remove_green_screen_hsv(
         raw_image,
@@ -336,6 +376,10 @@ def create_sticker(
         erosion_iterations=0,
     )
 
+    if save_intermediates:
+        transparent_image.save(intermediates_dir / "02_after_hsv_removal.png")
+        logger.debug("Saved intermediate: 02_after_hsv_removal.png")
+
     # Second pass: aggressive removal for remaining greens
     transparent_image = remove_green_screen_aggressive(
         transparent_image,
@@ -343,19 +387,30 @@ def create_sticker(
         edge_pixels=1,
     )
 
+    if save_intermediates:
+        transparent_image.save(intermediates_dir / "03_after_aggressive_removal.png")
+        logger.debug("Saved intermediate: 03_after_aggressive_removal.png")
+
     # Edge cleanup
     transparent_image = cleanup_edges(transparent_image, threshold=edge_threshold)
+
+    if save_intermediates:
+        transparent_image.save(intermediates_dir / "04_after_edge_cleanup.png")
+        logger.debug("Saved intermediate: 04_after_edge_cleanup.png")
 
     # Optional resize
     if resize is not None:
         transparent_image = resize_image(
             transparent_image, resize, maintain_aspect=not resize_exact
         )
+        if save_intermediates:
+            transparent_image.save(intermediates_dir / "05_after_resize.png")
+            logger.debug("Saved intermediate: 05_after_resize.png")
 
     # Quality validation
     metrics = validate_transparency(transparent_image)
     if metrics.has_quality_warning:
-        print(f"Warning: {metrics.warning_message}")
+        logger.warning("Warning: %s", metrics.warning_message)
 
     if output:
         # Build format configuration

@@ -86,6 +86,22 @@ sticker-generator "a cat" --hue-center 120 --hue-range 40 --min-saturation 30
 # Retry options for unreliable connections
 sticker-generator "a cat" --max-retries 5 --retry-delay 2.0
 sticker-generator "a cat" --max-retries 0  # Disable retries
+
+# Verbose mode (shows processing details on stderr)
+sticker-generator "a cat" -o cat.png --verbose
+
+# Debug mode (verbose + auto-saves intermediate images)
+sticker-generator "a cat" -o cat.png --debug
+ls cat_intermediates/  # 01_raw_from_api.png, 02_after_hsv_removal.png, ...
+
+# Quiet mode (only warnings and errors)
+sticker-generator "a cat" -o cat.png --quiet
+
+# Save intermediate images to a custom directory
+sticker-generator "a cat" -o cat.png --save-intermediates /tmp/debug/
+
+# Save intermediates with auto-generated directory name
+sticker-generator "a cat" -o cat.png --save-intermediates
 ```
 
 #### Available Styles
@@ -141,6 +157,33 @@ After processing, the tool automatically checks the transparency ratio and warns
 - **<5% transparent**: Green background removal may have failed
 
 Use `--strict` to make these warnings exit with a non-zero status code (useful in scripts/CI).
+
+#### Verbosity & Debug Mode
+
+| Flag | Level | What you see |
+|------|-------|-------------|
+| *(default)* | INFO | Progress messages, completion, quality warnings |
+| `-v, --verbose` | DEBUG | Above + processing params, pixel stats, API details |
+| `--debug` | DEBUG | Same as verbose, plus auto-saves intermediate images |
+| `--quiet` | WARNING | Only warnings and errors |
+
+#### Troubleshooting
+
+If green removal produces unexpected results, use `--debug` to inspect each processing stage:
+
+```bash
+sticker-generator "a tree frog" -o frog.png --debug
+ls frog_intermediates/
+# 01_raw_from_api.png        - Raw image from Gemini
+# 02_after_hsv_removal.png   - After HSV-based green removal
+# 03_after_aggressive_removal.png - After aggressive green pass
+# 04_after_edge_cleanup.png  - After edge cleanup
+```
+
+You can also save intermediates without debug verbosity:
+```bash
+sticker-generator "a frog" -o frog.png --save-intermediates /tmp/debug/
+```
 
 ### Python API
 
@@ -227,6 +270,13 @@ sticker = create_sticker(
     output="cat.png",
     max_retries=5,     # More retries for unreliable connections
     retry_delay=2.0    # Start with 2s delay, doubles each retry
+)
+
+# Save intermediate images for debugging
+sticker = create_sticker(
+    prompt="a tree frog",
+    output="frog.png",
+    save_intermediates="frog_debug/"  # Saves each pipeline stage as PNG
 )
 ```
 
