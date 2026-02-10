@@ -257,6 +257,7 @@ class TestGenerateStickerSheet:
             green_threshold=1.1,
             max_retries=3,
             retry_delay=1.0,
+            save_intermediates=None,
         )
 
     @patch("sticker_generator.sheet.create_sticker")
@@ -312,6 +313,7 @@ class TestGenerateStickerSheet:
             green_threshold=1.1,
             max_retries=3,
             retry_delay=1.0,
+            save_intermediates=None,
         )
 
 

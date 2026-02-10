@@ -112,31 +112,38 @@ class TestCLIFormatOptions:
         call_kwargs = mock_create.call_args[1]
         assert call_kwargs["output_format"] is None
 
-    def test_invalid_quality_below_range(self, capsys):
-        with patch.object(sys, "argv", ["prog", "test prompt", "-q", "0"]):
-            result = main()
+    def test_invalid_quality_below_range(self, caplog):
+        with caplog.at_level("ERROR", logger="sticker_generator"):
+            with patch.object(sys, "argv", ["prog", "test prompt", "-q", "0"]):
+                result = main()
 
         assert result == 1
-        captured = capsys.readouterr()
-        assert "Quality must be between 1 and 100" in captured.err
+        assert any(
+            "Quality must be between 1 and 100" in r.message for r in caplog.records
+        )
 
-    def test_invalid_quality_above_range(self, capsys):
-        with patch.object(sys, "argv", ["prog", "test prompt", "-q", "101"]):
-            result = main()
-
-        assert result == 1
-        captured = capsys.readouterr()
-        assert "Quality must be between 1 and 100" in captured.err
-
-    def test_both_lossless_and_lossy_rejected(self, capsys):
-        with patch.object(
-            sys, "argv", ["prog", "test prompt", "--lossless", "--lossy"]
-        ):
-            result = main()
+    def test_invalid_quality_above_range(self, caplog):
+        with caplog.at_level("ERROR", logger="sticker_generator"):
+            with patch.object(sys, "argv", ["prog", "test prompt", "-q", "101"]):
+                result = main()
 
         assert result == 1
-        captured = capsys.readouterr()
-        assert "Cannot specify both --lossless and --lossy" in captured.err
+        assert any(
+            "Quality must be between 1 and 100" in r.message for r in caplog.records
+        )
+
+    def test_both_lossless_and_lossy_rejected(self, caplog):
+        with caplog.at_level("ERROR", logger="sticker_generator"):
+            with patch.object(
+                sys, "argv", ["prog", "test prompt", "--lossless", "--lossy"]
+            ):
+                result = main()
+
+        assert result == 1
+        assert any(
+            "Cannot specify both --lossless and --lossy" in r.message
+            for r in caplog.records
+        )
 
     @patch("sticker_generator.cli.generate_sticker_sheet")
     def test_format_passed_to_sheet_generation(self, mock_sheet):
@@ -274,13 +281,13 @@ class TestCLIBasicFunctionality:
         assert call_kwargs["resize"] == (512, 256)
         assert call_kwargs["resize_exact"] is True
 
-    def test_error_handling(self, capsys):
+    def test_error_handling(self, caplog):
         with patch("sticker_generator.cli.create_sticker") as mock_create:
             mock_create.side_effect = Exception("API error")
 
-            with patch.object(sys, "argv", ["prog", "test prompt"]):
-                result = main()
+            with caplog.at_level("ERROR", logger="sticker_generator"):
+                with patch.object(sys, "argv", ["prog", "test prompt"]):
+                    result = main()
 
             assert result == 1
-            captured = capsys.readouterr()
-            assert "Error: API error" in captured.err
+            assert any("Error: API error" in r.message for r in caplog.records)

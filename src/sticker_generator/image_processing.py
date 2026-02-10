@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import warnings
 from dataclasses import dataclass
 
@@ -9,6 +10,8 @@ import numpy as np
 from PIL import Image
 
 from sticker_generator.formats import OutputFormat, format_from_extension, get_format
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -92,7 +95,7 @@ def validate_transparency(image: Image.Image) -> TransparencyMetrics:
     opaque = int(np.sum(alpha == 255))
     semi = total - transparent - opaque
 
-    return TransparencyMetrics(
+    metrics = TransparencyMetrics(
         total_pixels=total,
         transparent_pixels=transparent,
         opaque_pixels=opaque,
@@ -100,6 +103,15 @@ def validate_transparency(image: Image.Image) -> TransparencyMetrics:
         transparent_ratio=transparent / total if total > 0 else 0.0,
         opaque_ratio=opaque / total if total > 0 else 0.0,
     )
+    logger.debug(
+        "Transparency metrics: %d total, %.1f%% transparent, "
+        "%.1f%% opaque, %d semi-transparent",
+        total,
+        metrics.transparent_ratio * 100,
+        metrics.opaque_ratio * 100,
+        semi,
+    )
+    return metrics
 
 
 def rgb_to_hsv_array(rgb_array: np.ndarray) -> np.ndarray:
@@ -158,6 +170,17 @@ def remove_green_screen_hsv(
     Returns:
         PIL Image with green background removed (RGBA with transparency).
     """
+    logger.debug(
+        "HSV green removal: image=%dx%d, hue_center=%.1f, hue_range=%.1f, "
+        "min_saturation=%.1f, min_value=%.1f",
+        image.width,
+        image.height,
+        hue_center,
+        hue_range,
+        min_saturation,
+        min_value,
+    )
+
     if image.mode != "RGBA":
         image = image.convert("RGBA")
 
@@ -184,8 +207,17 @@ def remove_green_screen_hsv(
             )
 
     alpha = data[:, :, 3].copy()
+    green_count = int(np.sum(green_mask))
+    total = int(alpha.size)
     alpha[green_mask] = 0
     data[:, :, 3] = alpha
+
+    logger.debug(
+        "HSV removal: %d/%d pixels (%.1f%%) detected as green",
+        green_count,
+        total,
+        green_count / total * 100 if total > 0 else 0,
+    )
 
     return Image.fromarray(data)
 
@@ -207,6 +239,8 @@ def remove_green_screen_aggressive(
     Returns:
         PIL Image with green background removed (RGBA with transparency).
     """
+    logger.debug("Aggressive green removal: threshold=%.2f", green_threshold)
+
     if image.mode != "RGBA":
         image = image.convert("RGBA")
 
@@ -226,8 +260,11 @@ def remove_green_screen_aggressive(
         green_mask = ndimage.binary_dilation(green_mask, iterations=edge_pixels)
 
     alpha = data[:, :, 3].copy()
+    additional = int(np.sum(green_mask & (alpha > 0)))
     alpha[green_mask] = 0
     data[:, :, 3] = alpha
+
+    logger.debug("Aggressive removal: %d additional pixels removed", additional)
 
     return Image.fromarray(data)
 
@@ -243,6 +280,8 @@ def cleanup_edges(image: Image.Image, threshold: int = 128) -> Image.Image:
     Returns:
         PIL Image with cleaned edges.
     """
+    logger.debug("Edge cleanup: threshold=%d", threshold)
+
     if image.mode != "RGBA":
         return image
 
@@ -276,6 +315,15 @@ def resize_image(
     Raises:
         ValueError: If width or height is not positive.
     """
+    logger.debug(
+        "Resize: %dx%d → %dx%d (maintain_aspect=%s)",
+        image.width,
+        image.height,
+        size[0],
+        size[1],
+        maintain_aspect,
+    )
+
     width, height = size
     if width <= 0 or height <= 0:
         raise ValueError("Width and height must be positive integers")
@@ -335,6 +383,7 @@ def save_transparent_image(
     fmt = _resolve_format(output_format, filename)
     save_params = fmt.get_save_params()
     image.save(filename, fmt.pil_format, **save_params)
+    logger.debug("Saved %s (format=%s)", filename, fmt.pil_format)
 
 
 def save_transparent_png(image: Image.Image, filename: str) -> None:

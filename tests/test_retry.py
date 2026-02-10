@@ -226,7 +226,7 @@ class TestGenerateStickerNoImageRetry:
 
     @patch("sticker_generator.core.time.sleep")
     @patch("sticker_generator.core.genai.Client")
-    def test_retry_prints_progress(self, mock_client_cls, mock_sleep, capsys):
+    def test_retry_logs_progress(self, mock_client_cls, mock_sleep, caplog):
         mock_client = MagicMock()
         mock_client_cls.return_value = mock_client
 
@@ -235,10 +235,12 @@ class TestGenerateStickerNoImageRetry:
             _make_mock_response(has_image=True),
         ]
 
-        generate_sticker("test prompt", max_retries=2, retry_delay=0.1)
+        with caplog.at_level("WARNING", logger="sticker_generator.core"):
+            generate_sticker("test prompt", max_retries=2, retry_delay=0.1)
 
-        captured = capsys.readouterr()
-        assert "No image in response, retrying (1/2)" in captured.out
+        assert any(
+            "No image in response, retrying (1/2)" in r.message for r in caplog.records
+        )
 
 
 class TestCreateStickerRetryPassthrough:
@@ -374,23 +376,29 @@ class TestCLIRetryFlags:
         kwargs = mock_create.call_args[1]
         assert kwargs["max_retries"] == 0
 
-    def test_negative_max_retries_rejected(self, capsys):
-        with patch.object(sys, "argv", ["prog", "test prompt", "--max-retries", "-1"]):
-            result = main()
+    def test_negative_max_retries_rejected(self, caplog):
+        with caplog.at_level("ERROR", logger="sticker_generator"):
+            with patch.object(
+                sys, "argv", ["prog", "test prompt", "--max-retries", "-1"]
+            ):
+                result = main()
 
         assert result == 1
-        captured = capsys.readouterr()
-        assert "--max-retries must be non-negative" in captured.err
+        assert any(
+            "--max-retries must be non-negative" in r.message for r in caplog.records
+        )
 
-    def test_negative_retry_delay_rejected(self, capsys):
-        with patch.object(
-            sys, "argv", ["prog", "test prompt", "--retry-delay", "-0.5"]
-        ):
-            result = main()
+    def test_negative_retry_delay_rejected(self, caplog):
+        with caplog.at_level("ERROR", logger="sticker_generator"):
+            with patch.object(
+                sys, "argv", ["prog", "test prompt", "--retry-delay", "-0.5"]
+            ):
+                result = main()
 
         assert result == 1
-        captured = capsys.readouterr()
-        assert "--retry-delay must be non-negative" in captured.err
+        assert any(
+            "--retry-delay must be non-negative" in r.message for r in caplog.records
+        )
 
     @patch("sticker_generator.cli.generate_sticker_sheet")
     def test_retry_flags_passed_to_sheet(self, mock_sheet):

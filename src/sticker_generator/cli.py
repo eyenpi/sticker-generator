@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 from pathlib import Path
 
@@ -11,6 +12,27 @@ from sticker_generator.formats import get_available_formats
 from sticker_generator.image_processing import validate_transparency
 from sticker_generator.sheet import generate_sticker_sheet
 from sticker_generator.styles import get_available_styles
+
+logger = logging.getLogger(__name__)
+
+
+def _setup_logging(level: int) -> None:
+    """Configure logging for the sticker_generator package.
+
+    Args:
+        level: Logging level (e.g., logging.DEBUG, logging.INFO, logging.WARNING).
+    """
+    root_logger = logging.getLogger("sticker_generator")
+    # Clear existing handlers (idempotent for tests)
+    root_logger.handlers.clear()
+
+    handler = logging.StreamHandler(sys.stderr)
+    if level <= logging.DEBUG:
+        handler.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
+    else:
+        handler.setFormatter(logging.Formatter("%(message)s"))
+    root_logger.addHandler(handler)
+    root_logger.setLevel(level)
 
 
 def parse_resize_arg(value: str) -> tuple[int, int]:
@@ -187,6 +209,35 @@ def main() -> int:
         help="Exit with error if quality validation fails",
     )
 
+    # Verbosity flags (mutually exclusive)
+    verbosity_group = parser.add_mutually_exclusive_group()
+    verbosity_group.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed processing information (DEBUG level)",
+    )
+    verbosity_group.add_argument(
+        "--debug",
+        action="store_true",
+        help="Verbose output plus auto-save intermediate images",
+    )
+    verbosity_group.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Only show warnings and errors",
+    )
+
+    parser.add_argument(
+        "--save-intermediates",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="DIR",
+        help="Save intermediate processing images to DIR "
+        "(auto-generated from output stem if DIR omitted)",
+    )
+
     # Retry parameters
     retry_group = parser.add_argument_group(
         "retry options",
@@ -243,14 +294,34 @@ def main() -> int:
 
     args = parser.parse_args()
 
+    # Configure logging based on verbosity flags
+    if args.debug or args.verbose:
+        _setup_logging(logging.DEBUG)
+    elif args.quiet:
+        _setup_logging(logging.WARNING)
+    else:
+        _setup_logging(logging.INFO)
+
+    # Compute save_intermediates directory
+    save_intermediates: str | None = None
+    if args.save_intermediates is not None:
+        if args.save_intermediates == "":
+            # Auto-generate from output stem
+            save_intermediates = str(Path(args.output).stem + "_intermediates")
+        else:
+            save_intermediates = args.save_intermediates
+    elif args.debug:
+        # --debug implies save-intermediates
+        save_intermediates = str(Path(args.output).stem + "_intermediates")
+
     # Validate quality range
     if args.quality is not None and not (1 <= args.quality <= 100):
-        print("Error: Quality must be between 1 and 100", file=sys.stderr)
+        logger.error("Error: Quality must be between 1 and 100")
         return 1
 
     # Validate lossless/lossy flags are not both set
     if args.lossless and args.lossy:
-        print("Error: Cannot specify both --lossless and --lossy", file=sys.stderr)
+        logger.error("Error: Cannot specify both --lossless and --lossy")
         return 1
 
     # Determine lossless setting
@@ -262,34 +333,34 @@ def main() -> int:
 
     # Validate retry parameters
     if args.max_retries < 0:
-        print("Error: --max-retries must be non-negative", file=sys.stderr)
+        logger.error("Error: --max-retries must be non-negative")
         return 1
 
     if args.retry_delay < 0:
-        print("Error: --retry-delay must be non-negative", file=sys.stderr)
+        logger.error("Error: --retry-delay must be non-negative")
         return 1
 
     # Validate that either prompt or --process is provided
     if args.process is None and args.prompt is None:
-        print("Error: A prompt is required (or use --process IMAGE)", file=sys.stderr)
+        logger.error("Error: A prompt is required (or use --process IMAGE)")
         return 1
 
     # Validate --process image exists
     if args.process and not Path(args.process).exists():
-        print(f"Error: Input image not found: {args.process}", file=sys.stderr)
+        logger.error("Error: Input image not found: %s", args.process)
         return 1
 
     # Validate reference images exist
     if args.images:
         for img_path in args.images:
             if not Path(img_path).exists():
-                print(f"Error: Reference image not found: {img_path}", file=sys.stderr)
+                logger.error("Error: Reference image not found: %s", img_path)
                 return 1
 
     try:
         if args.process:
             # Process existing image mode
-            print(f"Processing image: {args.process}")
+            logger.info("Processing image: %s", args.process)
             process_image(
                 input_path=args.process,
                 output=args.output,
@@ -304,17 +375,18 @@ def main() -> int:
                 min_saturation=args.min_saturation,
                 min_value=args.min_value,
                 green_threshold=args.green_threshold,
+                save_intermediates=save_intermediates,
             )
-            print(f"Processed image saved to: {args.output}")
+            logger.info("Processed image saved to: %s", args.output)
         else:
-            print(f"Generating sticker: {args.prompt}")
+            logger.info("Generating sticker: %s", args.prompt)
             if args.images:
-                print(f"Using {len(args.images)} reference image(s)")
+                logger.info("Using %d reference image(s)", len(args.images))
             if args.style:
-                print(f"Using style: {args.style}")
+                logger.info("Using style: %s", args.style)
 
             if args.variations > 1:
-                print(f"Generating {args.variations} variations...")
+                logger.info("Generating %d variations...", args.variations)
                 result = generate_sticker_sheet(
                     prompt=args.prompt,
                     variations=args.variations,
@@ -342,18 +414,24 @@ def main() -> int:
                     green_threshold=args.green_threshold,
                     sticker_max_retries=args.max_retries,
                     sticker_retry_delay=args.retry_delay,
+                    save_intermediates=save_intermediates,
                 )
 
                 if result.failed_indices:
-                    print(f"Warning: {len(result.failed_indices)} variation(s) failed")
+                    logger.warning(
+                        "Warning: %d variation(s) failed",
+                        len(result.failed_indices),
+                    )
 
                 if args.sheet:
-                    print(f"Sheet saved to: {args.output}")
+                    logger.info("Sheet saved to: %s", args.output)
                     if args.save_individuals:
                         prefix = Path(args.output).stem
-                        print(f"Individual stickers saved with prefix: {prefix}")
+                        logger.info("Individual stickers saved with prefix: %s", prefix)
                 else:
-                    print(f"Stickers saved with prefix: {Path(args.output).stem}")
+                    logger.info(
+                        "Stickers saved with prefix: %s", Path(args.output).stem
+                    )
             else:
                 result_image = create_sticker(
                     prompt=args.prompt,
@@ -376,22 +454,20 @@ def main() -> int:
                     green_threshold=args.green_threshold,
                     max_retries=args.max_retries,
                     retry_delay=args.retry_delay,
+                    save_intermediates=save_intermediates,
                 )
-                print(f"Sticker saved to: {args.output}")
+                logger.info("Sticker saved to: %s", args.output)
 
                 if args.strict:
                     metrics = validate_transparency(result_image)
                     if metrics.has_quality_warning:
-                        print(
-                            f"Error (--strict): {metrics.warning_message}",
-                            file=sys.stderr,
-                        )
+                        logger.error("Error (--strict): %s", metrics.warning_message)
                         return 1
 
         return 0
 
     except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
+        logger.error("Error: %s", e)
         return 1
 
 
