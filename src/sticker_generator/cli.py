@@ -181,6 +181,42 @@ def main() -> int:
         help="Force exact resize dimensions (may distort aspect ratio)",
     )
 
+    # Green removal tuning parameters
+    green_group = parser.add_argument_group(
+        "green removal tuning",
+        "Advanced parameters for green screen detection and removal",
+    )
+    green_group.add_argument(
+        "--hue-center",
+        type=float,
+        default=115,
+        help="Center hue for green detection, degrees (default: 115)",
+    )
+    green_group.add_argument(
+        "--hue-range",
+        type=float,
+        default=35,
+        help="Hue tolerance in degrees (default: 35)",
+    )
+    green_group.add_argument(
+        "--min-saturation",
+        type=float,
+        default=25,
+        help="Min saturation %% to consider green (default: 25)",
+    )
+    green_group.add_argument(
+        "--min-value",
+        type=float,
+        default=40,
+        help="Min brightness %% to consider green (default: 40)",
+    )
+    green_group.add_argument(
+        "--green-threshold",
+        type=float,
+        default=1.1,
+        help="Aggressive green ratio threshold (default: 1.1)",
+    )
+
     args = parser.parse_args()
 
     # Validate quality range
@@ -230,6 +266,11 @@ def main() -> int:
                 lossless=lossless,
                 resize=args.resize,
                 resize_exact=args.resize_exact,
+                hue_center=args.hue_center,
+                hue_range=args.hue_range,
+                min_saturation=args.min_saturation,
+                min_value=args.min_value,
+                green_threshold=args.green_threshold,
             )
             print(f"Processed image saved to: {args.output}")
         else:
@@ -261,6 +302,11 @@ def main() -> int:
                     lossless=lossless,
                     resize=args.resize,
                     resize_exact=args.resize_exact,
+                    hue_center=args.hue_center,
+                    hue_range=args.hue_range,
+                    min_saturation=args.min_saturation,
+                    min_value=args.min_value,
+                    green_threshold=args.green_threshold,
                 )
 
                 if result.failed_indices:
@@ -288,6 +334,11 @@ def main() -> int:
                     lossless=lossless,
                     resize=args.resize,
                     resize_exact=args.resize_exact,
+                    hue_center=args.hue_center,
+                    hue_range=args.hue_range,
+                    min_saturation=args.min_saturation,
+                    min_value=args.min_value,
+                    green_threshold=args.green_threshold,
                 )
                 print(f"Sticker saved to: {args.output}")
 
