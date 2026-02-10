@@ -287,6 +287,12 @@ def main() -> int:
         default=1.0,
         help="Delay between API requests in batch mode, seconds (default: 1.0)",
     )
+    batch_group.add_argument(
+        "--max-workers",
+        type=int,
+        default=1,
+        help="Max concurrent workers for batch/sheet generation (default: 1)",
+    )
 
     # Green removal tuning parameters
     green_group = parser.add_argument_group(
@@ -372,6 +378,10 @@ def main() -> int:
         logger.error("Error: --retry-delay must be non-negative")
         return 1
 
+    if args.max_workers < 1:
+        logger.error("Error: --max-workers must be at least 1")
+        return 1
+
     # Validate batch flag combinations
     if args.batch_prompts and args.batch_dir:
         logger.error("Error: Cannot use both --batch-prompts and --batch-dir")
@@ -454,6 +464,7 @@ def main() -> int:
                 delay_between_requests=args.delay,
                 strict=args.strict,
                 save_intermediates=save_intermediates,
+                max_workers=args.max_workers,
             )
             if batch_result.failed:
                 logger.warning(
@@ -481,6 +492,7 @@ def main() -> int:
                 green_threshold=args.green_threshold,
                 strict=args.strict,
                 save_intermediates=save_intermediates,
+                max_workers=args.max_workers,
             )
             if batch_result.failed:
                 logger.warning(
@@ -547,6 +559,7 @@ def main() -> int:
                     sticker_max_retries=args.max_retries,
                     sticker_retry_delay=args.retry_delay,
                     save_intermediates=save_intermediates,
+                    max_workers=args.max_workers,
                 )
 
                 if result.failed_indices:

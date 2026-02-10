@@ -117,6 +117,12 @@ sticker-generator --batch-prompts prompts.txt --output-dir ./stickers/ --strict
 
 # Control delay between API requests in batch mode
 sticker-generator --batch-prompts prompts.txt --output-dir ./stickers/ --delay 2.0
+
+# Concurrent batch generation (4 workers)
+sticker-generator --batch-prompts prompts.txt --output-dir ./stickers/ --max-workers 4
+
+# Concurrent sheet generation
+sticker-generator "happy cat" -n 8 --sheet -o cats.png --max-workers 4
 ```
 
 #### Available Styles
@@ -143,6 +149,16 @@ Format options:
 - `-q, --quality 1-100` - Quality for lossy formats (higher is better)
 - `--lossless` - Force lossless compression
 - `--lossy` - Force lossy compression
+
+#### Concurrent Execution
+
+Speed up batch and sheet generation by processing multiple stickers in parallel:
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--max-workers` | 1 | Max concurrent workers (1 = sequential) |
+
+When `max_workers > 1`, `--delay` is ignored (concurrency controls rate limiting instead). Strict mode (`--strict`) forces sequential execution for deterministic error handling.
 
 #### Green Removal Tuning
 
@@ -307,6 +323,7 @@ result = batch_generate(
     prompts=["a cute cat", "a happy dog", "a friendly robot"],
     output_dir="./stickers/",
     style="kawaii",
+    max_workers=4,  # Generate 4 stickers concurrently
 )
 print(f"Generated {len(result.successful)}/{result.total} stickers")
 for item in result.failed:
@@ -391,7 +408,8 @@ from sticker_generator import generate_sticker_sheet
 result = generate_sticker_sheet(
     prompt="happy cat",
     variations=4,
-    output="cat_sheet.png"
+    output="cat_sheet.png",
+    max_workers=4,  # Generate 4 variations concurrently
 )
 
 # Access individual stickers
