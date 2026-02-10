@@ -6,7 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from sticker_generator.core import create_sticker
+from sticker_generator.core import create_sticker, process_image
 from sticker_generator.formats import get_available_formats
 from sticker_generator.sheet import generate_sticker_sheet
 from sticker_generator.styles import get_available_styles
@@ -65,7 +65,14 @@ def main() -> int:
     )
     parser.add_argument(
         "prompt",
+        nargs="?",
+        default=None,
         help="Description of the sticker to generate",
+    )
+    parser.add_argument(
+        "--process",
+        metavar="IMAGE",
+        help="Process an existing image (remove green background)",
     )
     parser.add_argument(
         "-o",
@@ -229,6 +236,16 @@ def main() -> int:
     elif args.lossy:
         lossless = False
 
+    # Validate that either prompt or --process is provided
+    if args.process is None and args.prompt is None:
+        print("Error: A prompt is required (or use --process IMAGE)", file=sys.stderr)
+        return 1
+
+    # Validate --process image exists
+    if args.process and not Path(args.process).exists():
+        print(f"Error: Input image not found: {args.process}", file=sys.stderr)
+        return 1
+
     # Validate reference images exist
     if args.images:
         for img_path in args.images:
@@ -237,59 +254,13 @@ def main() -> int:
                 return 1
 
     try:
-        print(f"Generating sticker: {args.prompt}")
-        if args.images:
-            print(f"Using {len(args.images)} reference image(s)")
-        if args.style:
-            print(f"Using style: {args.style}")
-
-        if args.variations > 1:
-            print(f"Generating {args.variations} variations...")
-            result = generate_sticker_sheet(
-                prompt=args.prompt,
-                variations=args.variations,
-                output=args.output if args.sheet else None,
-                save_individuals=args.save_individuals or not args.sheet,
-                individual_prefix=Path(args.output).stem if not args.sheet else None,
-                aspect_ratio=args.aspect_ratio,
-                input_images=args.images,
-                api_key=args.api_key,
-                edge_threshold=args.edge_threshold,
-                columns=args.columns,
-                padding=args.padding,
-                style=args.style,
-                output_format=args.format,
-                quality=args.quality,
-                lossless=lossless,
-                resize=args.resize,
-                resize_exact=args.resize_exact,
-                hue_center=args.hue_center,
-                hue_range=args.hue_range,
-                min_saturation=args.min_saturation,
-                min_value=args.min_value,
-                green_threshold=args.green_threshold,
-            )
-
-            if result.failed_indices:
-                print(f"Warning: {len(result.failed_indices)} variation(s) failed")
-
-            if args.sheet:
-                print(f"Sheet saved to: {args.output}")
-                if args.save_individuals:
-                    prefix = Path(args.output).stem
-                    print(f"Individual stickers saved with prefix: {prefix}")
-            else:
-                print(f"Stickers saved with prefix: {Path(args.output).stem}")
-        else:
-            create_sticker(
-                prompt=args.prompt,
+        if args.process:
+            # Process existing image mode
+            print(f"Processing image: {args.process}")
+            process_image(
+                input_path=args.process,
                 output=args.output,
-                aspect_ratio=args.aspect_ratio,
-                save_raw=args.save_raw,
-                input_images=args.images,
-                api_key=args.api_key,
                 edge_threshold=args.edge_threshold,
-                style=args.style,
                 output_format=args.format,
                 quality=args.quality,
                 lossless=lossless,
@@ -301,7 +272,75 @@ def main() -> int:
                 min_value=args.min_value,
                 green_threshold=args.green_threshold,
             )
-            print(f"Sticker saved to: {args.output}")
+            print(f"Processed image saved to: {args.output}")
+        else:
+            print(f"Generating sticker: {args.prompt}")
+            if args.images:
+                print(f"Using {len(args.images)} reference image(s)")
+            if args.style:
+                print(f"Using style: {args.style}")
+
+            if args.variations > 1:
+                print(f"Generating {args.variations} variations...")
+                result = generate_sticker_sheet(
+                    prompt=args.prompt,
+                    variations=args.variations,
+                    output=args.output if args.sheet else None,
+                    save_individuals=args.save_individuals or not args.sheet,
+                    individual_prefix=Path(args.output).stem
+                    if not args.sheet
+                    else None,
+                    aspect_ratio=args.aspect_ratio,
+                    input_images=args.images,
+                    api_key=args.api_key,
+                    edge_threshold=args.edge_threshold,
+                    columns=args.columns,
+                    padding=args.padding,
+                    style=args.style,
+                    output_format=args.format,
+                    quality=args.quality,
+                    lossless=lossless,
+                    resize=args.resize,
+                    resize_exact=args.resize_exact,
+                    hue_center=args.hue_center,
+                    hue_range=args.hue_range,
+                    min_saturation=args.min_saturation,
+                    min_value=args.min_value,
+                    green_threshold=args.green_threshold,
+                )
+
+                if result.failed_indices:
+                    print(f"Warning: {len(result.failed_indices)} variation(s) failed")
+
+                if args.sheet:
+                    print(f"Sheet saved to: {args.output}")
+                    if args.save_individuals:
+                        prefix = Path(args.output).stem
+                        print(f"Individual stickers saved with prefix: {prefix}")
+                else:
+                    print(f"Stickers saved with prefix: {Path(args.output).stem}")
+            else:
+                create_sticker(
+                    prompt=args.prompt,
+                    output=args.output,
+                    aspect_ratio=args.aspect_ratio,
+                    save_raw=args.save_raw,
+                    input_images=args.images,
+                    api_key=args.api_key,
+                    edge_threshold=args.edge_threshold,
+                    style=args.style,
+                    output_format=args.format,
+                    quality=args.quality,
+                    lossless=lossless,
+                    resize=args.resize,
+                    resize_exact=args.resize_exact,
+                    hue_center=args.hue_center,
+                    hue_range=args.hue_range,
+                    min_saturation=args.min_saturation,
+                    min_value=args.min_value,
+                    green_threshold=args.green_threshold,
+                )
+                print(f"Sticker saved to: {args.output}")
 
         return 0
 
