@@ -160,6 +160,17 @@ Speed up batch and sheet generation by processing multiple stickers in parallel:
 
 When `max_workers > 1`, `--delay` is ignored (concurrency controls rate limiting instead). Strict mode (`--strict`) forces sequential execution for deterministic error handling.
 
+#### Progress Bars
+
+Batch and sheet operations show tqdm progress bars by default:
+
+| Flag | Description |
+|------|-------------|
+| `--no-progress` | Disable progress bars |
+| `--quiet` | Also disables progress bars (along with non-warning log output) |
+
+Progress bars work with concurrent mode (`--max-workers`).
+
 #### Green Removal Tuning
 
 If green removal produces bad results (incomplete removal or subject removal), tune these parameters:

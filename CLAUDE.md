@@ -43,8 +43,8 @@ Key modules:
 - `image_processing.py`: Pure image processing (no API calls), HSV conversion, green removal, edge cleanup, resize, `validate_transparency()`, `TransparencyMetrics` dataclass, `save_transparent_image()`
 - `formats.py`: Output format configuration (`OutputFormat` dataclass, presets for png/webp/webp-lossy)
 - `styles.py`: Style presets that modify prompts (kawaii, minimal, 3d, pixel-art, retro, watercolor)
-- `batch.py`: Batch processing - generate from prompt files or process image directories. `BatchItem`/`BatchResult` dataclasses, `parse_prompt_file()`, `batch_generate()`, `batch_process_images()`. Supports concurrent execution via `max_workers` parameter using `ThreadPoolExecutor`
-- `sheet.py`: Sticker sheet generation - multiple variations combined into a grid. Supports concurrent execution via `max_workers` parameter using `ThreadPoolExecutor`
+- `batch.py`: Batch processing - generate from prompt files or process image directories. `BatchItem`/`BatchResult` dataclasses, `parse_prompt_file()`, `batch_generate()`, `batch_process_images()`. Supports concurrent execution via `max_workers` parameter using `ThreadPoolExecutor`. `progress_callback` parameter for progress reporting
+- `sheet.py`: Sticker sheet generation - multiple variations combined into a grid. Supports concurrent execution via `max_workers` parameter using `ThreadPoolExecutor`. `progress_callback` parameter for progress reporting
 - `cli.py`: Command-line interface wrapping `create_sticker()`, `process_image()`, `generate_sticker_sheet()`, and batch functions. Configures the `sticker_generator` root logger with `StreamHandler(sys.stderr)` based on verbosity flags
 
 Logging hierarchy: Each module uses `logging.getLogger(__name__)`. `__init__.py` adds `NullHandler` (silent as library). CLI's `_setup_logging()` configures the `sticker_generator` root logger with a `StreamHandler(sys.stderr)`.
@@ -58,6 +58,7 @@ Logging hierarchy: Each module uses `logging.getLogger(__name__)`. `__init__.py`
 - **Structured logging**: All output via Python's `logging` module. CLI verbosity flags: `-v/--verbose` (DEBUG), `--debug` (DEBUG + save intermediates), `--quiet` (WARNING only). All log output goes to stderr
 - **Batch processing**: `batch_generate()` processes a list of prompts, `batch_process_images()` processes all images in a directory. CLI flags: `--batch-prompts FILE`, `--batch-dir DIR`, `--output-dir DIR`. Continue-on-error by default, `--strict` stops on first failure. Rate limiting via `--delay`
 - **Concurrent execution**: `max_workers` parameter on `batch_generate()`, `batch_process_images()`, and `generate_sticker_sheet()` enables parallel processing via `ThreadPoolExecutor`. Default `max_workers=1` preserves sequential behavior. CLI flag: `--max-workers`. Strict mode forces sequential execution when `max_workers > 1`
+- **Progress bars**: tqdm progress bars for batch and sheet operations. CLI shows them by default; `--no-progress` or `--quiet` disables. Library API uses callback-based `progress_callback` parameter (tqdm-agnostic). `logging_redirect_tqdm()` prevents log/progress bar conflicts
 - **Save intermediates**: `--save-intermediates [DIR]` or `save_intermediates` parameter saves PNGs after each pipeline stage for debugging. `--debug` auto-enables this
 
 ## Output Formats

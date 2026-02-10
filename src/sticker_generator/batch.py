@@ -13,6 +13,7 @@ from sticker_generator.core import _build_output_format, create_sticker, process
 from sticker_generator.image_processing import validate_transparency
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from os import PathLike
 
 logger = logging.getLogger(__name__)
@@ -125,6 +126,7 @@ def batch_generate(
     strict: bool = False,
     save_intermediates: str | PathLike | None = None,
     max_workers: int = 1,
+    progress_callback: Callable[[], object] | None = None,
 ) -> BatchResult:
     """Generate stickers from a list of prompts.
 
@@ -153,6 +155,8 @@ def batch_generate(
         save_intermediates: Directory to save intermediate images.
         max_workers: Maximum number of concurrent workers (default 1 for
             sequential execution).
+        progress_callback: Optional callable invoked after each item completes
+            (success or failure). Called with no arguments.
 
     Returns:
         BatchResult with successful and failed items.
@@ -231,6 +235,8 @@ def batch_generate(
                 result.successful.append(item)
             else:
                 result.failed.append(item)
+            if progress_callback is not None:
+                progress_callback()
     else:
         for item in items:
             item_intermediates = None
@@ -286,7 +292,12 @@ def batch_generate(
 
                 if strict:
                     logger.error("Stopping batch (--strict mode)")
+                    if progress_callback is not None:
+                        progress_callback()
                     break
+
+            if progress_callback is not None:
+                progress_callback()
 
             if item.index < len(prompts) - 1:
                 time.sleep(delay_between_requests)
@@ -346,6 +357,7 @@ def batch_process_images(
     strict: bool = False,
     save_intermediates: str | PathLike | None = None,
     max_workers: int = 1,
+    progress_callback: Callable[[], object] | None = None,
 ) -> BatchResult:
     """Process all images in a directory by removing green backgrounds.
 
@@ -367,6 +379,8 @@ def batch_process_images(
         save_intermediates: Directory to save intermediate images.
         max_workers: Maximum number of concurrent workers (default 1 for
             sequential execution).
+        progress_callback: Optional callable invoked after each item completes
+            (success or failure). Called with no arguments.
 
     Returns:
         BatchResult with successful and failed items.
@@ -456,6 +470,8 @@ def batch_process_images(
                 result.successful.append(item)
             else:
                 result.failed.append(item)
+            if progress_callback is not None:
+                progress_callback()
     else:
         for item in items:
             item_intermediates = None
@@ -505,7 +521,12 @@ def batch_process_images(
 
                 if strict:
                     logger.error("Stopping batch (--strict mode)")
+                    if progress_callback is not None:
+                        progress_callback()
                     break
+
+            if progress_callback is not None:
+                progress_callback()
 
     logger.info(
         "Batch process complete: %d/%d successful",
