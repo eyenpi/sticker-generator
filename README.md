@@ -102,6 +102,21 @@ sticker-generator "a cat" -o cat.png --save-intermediates /tmp/debug/
 
 # Save intermediates with auto-generated directory name
 sticker-generator "a cat" -o cat.png --save-intermediates
+
+# Batch generate from a prompts file (one prompt per line, # for comments)
+sticker-generator --batch-prompts prompts.txt --output-dir ./stickers/
+
+# Batch generate with style and format options
+sticker-generator --batch-prompts prompts.txt --output-dir ./stickers/ -s kawaii -f webp
+
+# Batch process all images in a directory (remove green backgrounds)
+sticker-generator --batch-dir ./green-screen-photos/ --output-dir ./processed/
+
+# Batch with strict mode (stop on first failure)
+sticker-generator --batch-prompts prompts.txt --output-dir ./stickers/ --strict
+
+# Control delay between API requests in batch mode
+sticker-generator --batch-prompts prompts.txt --output-dir ./stickers/ --delay 2.0
 ```
 
 #### Available Styles
@@ -277,6 +292,43 @@ sticker = create_sticker(
     prompt="a tree frog",
     output="frog.png",
     save_intermediates="frog_debug/"  # Saves each pipeline stage as PNG
+)
+```
+
+### Batch Processing
+
+Generate multiple stickers from a prompts file or process a directory of images:
+
+```python
+from sticker_generator import batch_generate, batch_process_images, parse_prompt_file
+
+# Generate stickers from a list of prompts
+result = batch_generate(
+    prompts=["a cute cat", "a happy dog", "a friendly robot"],
+    output_dir="./stickers/",
+    style="kawaii",
+)
+print(f"Generated {len(result.successful)}/{result.total} stickers")
+for item in result.failed:
+    print(f"  Failed: {item.source} - {item.error}")
+
+# Read prompts from a file
+prompts = parse_prompt_file("prompts.txt")
+result = batch_generate(prompts=prompts, output_dir="./stickers/")
+
+# Process all images in a directory (remove green backgrounds)
+result = batch_process_images(
+    input_dir="./green-screen-photos/",
+    output_dir="./processed/",
+    output_format="webp",
+)
+print(f"Processed {len(result.successful)}/{result.total} images")
+
+# Strict mode: stop on first failure
+result = batch_generate(
+    prompts=["a cat", "a dog"],
+    output_dir="./stickers/",
+    strict=True,
 )
 ```
 

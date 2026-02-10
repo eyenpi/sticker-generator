@@ -43,8 +43,9 @@ Key modules:
 - `image_processing.py`: Pure image processing (no API calls), HSV conversion, green removal, edge cleanup, resize, `validate_transparency()`, `TransparencyMetrics` dataclass, `save_transparent_image()`
 - `formats.py`: Output format configuration (`OutputFormat` dataclass, presets for png/webp/webp-lossy)
 - `styles.py`: Style presets that modify prompts (kawaii, minimal, 3d, pixel-art, retro, watercolor)
+- `batch.py`: Batch processing - generate from prompt files or process image directories. `BatchItem`/`BatchResult` dataclasses, `parse_prompt_file()`, `batch_generate()`, `batch_process_images()`
 - `sheet.py`: Sticker sheet generation - multiple variations combined into a grid
-- `cli.py`: Command-line interface wrapping `create_sticker()`, `process_image()`, and `generate_sticker_sheet()`. Configures the `sticker_generator` root logger with `StreamHandler(sys.stderr)` based on verbosity flags
+- `cli.py`: Command-line interface wrapping `create_sticker()`, `process_image()`, `generate_sticker_sheet()`, and batch functions. Configures the `sticker_generator` root logger with `StreamHandler(sys.stderr)` based on verbosity flags
 
 Logging hierarchy: Each module uses `logging.getLogger(__name__)`. `__init__.py` adds `NullHandler` (silent as library). CLI's `_setup_logging()` configures the `sticker_generator` root logger with a `StreamHandler(sys.stderr)`.
 
@@ -55,6 +56,7 @@ Logging hierarchy: Each module uses `logging.getLogger(__name__)`. `__init__.py`
 - **Quality validation**: Automatic transparency analysis after processing; warns on bad results. `--strict` CLI flag exits non-zero on quality warnings
 - **Retry with exponential backoff**: Two-layer retry protection for API calls. HTTP-level retries via google-genai's `HttpRetryOptions` handle transient errors (429, 500, 502, 503, 504). Application-level retries handle cases where the API returns no image. Configurable via `max_retries`/`retry_delay` params or `--max-retries`/`--retry-delay` CLI flags
 - **Structured logging**: All output via Python's `logging` module. CLI verbosity flags: `-v/--verbose` (DEBUG), `--debug` (DEBUG + save intermediates), `--quiet` (WARNING only). All log output goes to stderr
+- **Batch processing**: `batch_generate()` processes a list of prompts, `batch_process_images()` processes all images in a directory. CLI flags: `--batch-prompts FILE`, `--batch-dir DIR`, `--output-dir DIR`. Continue-on-error by default, `--strict` stops on first failure. Rate limiting via `--delay`
 - **Save intermediates**: `--save-intermediates [DIR]` or `save_intermediates` parameter saves PNGs after each pipeline stage for debugging. `--debug` auto-enables this
 
 ## Output Formats

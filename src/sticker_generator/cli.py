@@ -7,6 +7,11 @@ import logging
 import sys
 from pathlib import Path
 
+from sticker_generator.batch import (
+    batch_generate,
+    batch_process_images,
+    parse_prompt_file,
+)
 from sticker_generator.core import create_sticker, process_image
 from sticker_generator.formats import get_available_formats
 from sticker_generator.image_processing import validate_transparency
@@ -256,6 +261,33 @@ def main() -> int:
         help="Initial delay between retries in seconds (default: 1.0)",
     )
 
+    # Batch processing options
+    batch_group = parser.add_argument_group(
+        "batch options",
+        "Process multiple prompts or images at once",
+    )
+    batch_group.add_argument(
+        "--batch-prompts",
+        metavar="FILE",
+        help="Read prompts from text file (one per line, # for comments)",
+    )
+    batch_group.add_argument(
+        "--batch-dir",
+        metavar="DIR",
+        help="Process all images in directory (removes green backgrounds)",
+    )
+    batch_group.add_argument(
+        "--output-dir",
+        metavar="DIR",
+        help="Output directory for batch results (required for batch modes)",
+    )
+    batch_group.add_argument(
+        "--delay",
+        type=float,
+        default=1.0,
+        help="Delay between API requests in batch mode, seconds (default: 1.0)",
+    )
+
     # Green removal tuning parameters
     green_group = parser.add_argument_group(
         "green removal tuning",
@@ -340,9 +372,43 @@ def main() -> int:
         logger.error("Error: --retry-delay must be non-negative")
         return 1
 
-    # Validate that either prompt or --process is provided
-    if args.process is None and args.prompt is None:
-        logger.error("Error: A prompt is required (or use --process IMAGE)")
+    # Validate batch flag combinations
+    if args.batch_prompts and args.batch_dir:
+        logger.error("Error: Cannot use both --batch-prompts and --batch-dir")
+        return 1
+
+    if args.batch_dir and args.process:
+        logger.error("Error: Cannot use both --batch-dir and --process")
+        return 1
+
+    if args.batch_prompts and args.prompt:
+        logger.error("Error: Cannot use both --batch-prompts and a positional prompt")
+        return 1
+
+    is_batch = args.batch_prompts or args.batch_dir
+
+    if is_batch and not args.output_dir:
+        logger.error("Error: --output-dir is required for batch modes")
+        return 1
+
+    if is_batch and args.variations > 1:
+        logger.error("Error: -n/--variations is not compatible with batch modes")
+        return 1
+
+    if args.batch_prompts and not Path(args.batch_prompts).exists():
+        logger.error("Error: Prompt file not found: %s", args.batch_prompts)
+        return 1
+
+    if args.batch_dir and not Path(args.batch_dir).exists():
+        logger.error("Error: Input directory not found: %s", args.batch_dir)
+        return 1
+
+    # Validate that either prompt, --process, or batch flag is provided
+    if args.process is None and args.prompt is None and not is_batch:
+        logger.error(
+            "Error: A prompt is required "
+            "(or use --process IMAGE, --batch-prompts FILE, --batch-dir DIR)"
+        )
         return 1
 
     # Validate --process image exists
@@ -358,7 +424,73 @@ def main() -> int:
                 return 1
 
     try:
-        if args.process:
+        if args.batch_prompts:
+            prompts = parse_prompt_file(args.batch_prompts)
+            logger.info(
+                "Batch generating %d stickers from: %s",
+                len(prompts),
+                args.batch_prompts,
+            )
+            batch_result = batch_generate(
+                prompts=prompts,
+                output_dir=args.output_dir,
+                aspect_ratio=args.aspect_ratio,
+                input_images=args.images,
+                api_key=args.api_key,
+                edge_threshold=args.edge_threshold,
+                style=args.style,
+                output_format=args.format,
+                quality=args.quality,
+                lossless=lossless,
+                resize=args.resize,
+                resize_exact=args.resize_exact,
+                hue_center=args.hue_center,
+                hue_range=args.hue_range,
+                min_saturation=args.min_saturation,
+                min_value=args.min_value,
+                green_threshold=args.green_threshold,
+                max_retries=args.max_retries,
+                retry_delay=args.retry_delay,
+                delay_between_requests=args.delay,
+                strict=args.strict,
+                save_intermediates=save_intermediates,
+            )
+            if batch_result.failed:
+                logger.warning(
+                    "%d/%d items failed", len(batch_result.failed), batch_result.total
+                )
+                if args.strict:
+                    return 1
+            return 0
+
+        elif args.batch_dir:
+            logger.info("Batch processing images from: %s", args.batch_dir)
+            batch_result = batch_process_images(
+                input_dir=args.batch_dir,
+                output_dir=args.output_dir,
+                edge_threshold=args.edge_threshold,
+                output_format=args.format,
+                quality=args.quality,
+                lossless=lossless,
+                resize=args.resize,
+                resize_exact=args.resize_exact,
+                hue_center=args.hue_center,
+                hue_range=args.hue_range,
+                min_saturation=args.min_saturation,
+                min_value=args.min_value,
+                green_threshold=args.green_threshold,
+                strict=args.strict,
+                save_intermediates=save_intermediates,
+            )
+            if batch_result.failed:
+                logger.warning(
+                    "%d/%d items failed", len(batch_result.failed), batch_result.total
+                )
+                if args.strict:
+                    return 1
+            return 0
+
+        elif args.process:
             # Process existing image mode
             logger.info("Processing image: %s", args.process)
             process_image(

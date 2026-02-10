@@ -4,6 +4,13 @@ import logging
 
 logging.getLogger(__name__).addHandler(logging.NullHandler())
 
+from sticker_generator.batch import (  # noqa: E402
+    BatchItem,
+    BatchResult,
+    batch_generate,
+    batch_process_images,
+    parse_prompt_file,
+)
 from sticker_generator.core import (  # noqa: E402
     create_sticker,
     generate_sticker,
@@ -42,6 +49,11 @@ __all__ = [
     "create_sticker",
     "generate_sticker",
     "process_image",
+    "BatchItem",
+    "BatchResult",
+    "batch_generate",
+    "batch_process_images",
+    "parse_prompt_file",
     "remove_green_screen_hsv",
     "remove_green_screen_aggressive",
     "cleanup_edges",
