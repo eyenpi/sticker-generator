@@ -141,6 +141,73 @@ def generate_sticker(
     raise ValueError("No image was generated")
 
 
+def process_image(
+    input_path: str | PathLike,
+    output: str | PathLike | None = None,
+    edge_threshold: int = 64,
+    output_format: str | None = None,
+    quality: int | None = None,
+    lossless: bool | None = None,
+    resize: tuple[int, int] | None = None,
+    resize_exact: bool = False,
+) -> Image.Image:
+    """Process an existing image by removing its green background.
+
+    Runs the same pipeline as create_sticker() but on an existing image
+    instead of generating one via Gemini. Useful for processing images from
+    other sources or re-processing raw outputs.
+
+    Args:
+        input_path: Path to the input image file.
+        output: Optional output filename. Format auto-detected from extension.
+        edge_threshold: Alpha threshold for edge cleanup (0-255).
+        output_format: Output format preset name ("png", "webp", "webp-lossy").
+            Auto-detected from filename extension if None.
+        quality: Quality for lossy formats (1-100). Overrides preset default.
+        lossless: Whether to use lossless compression. Overrides preset default.
+        resize: Optional target size as (width, height) to resize the output.
+        resize_exact: If True, force exact dimensions (may distort).
+            Default maintains aspect ratio.
+
+    Returns:
+        PIL Image with transparent background.
+    """
+    raw_image = Image.open(input_path)
+
+    # HSV-based green removal (permissive settings for various green shades)
+    transparent_image = remove_green_screen_hsv(
+        raw_image,
+        hue_center=115,
+        hue_range=35,
+        min_saturation=25,
+        min_value=40,
+        dilation_iterations=2,
+        erosion_iterations=0,
+    )
+
+    # Second pass: aggressive removal for remaining greens
+    transparent_image = remove_green_screen_aggressive(
+        transparent_image,
+        green_threshold=1.1,
+        edge_pixels=1,
+    )
+
+    # Edge cleanup
+    transparent_image = cleanup_edges(transparent_image, threshold=edge_threshold)
+
+    # Optional resize
+    if resize is not None:
+        transparent_image = resize_image(
+            transparent_image, resize, maintain_aspect=not resize_exact
+        )
+
+    if output:
+        fmt = _build_output_format(output_format, str(output), quality, lossless)
+        save_transparent_image(transparent_image, str(output), fmt)
+
+    return transparent_image
+
+
 def create_sticker(
     prompt: str,
     output: str | PathLike | None = None,
