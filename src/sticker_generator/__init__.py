@@ -11,6 +11,13 @@ from sticker_generator.batch import (  # noqa: E402
     batch_process_images,
     parse_prompt_file,
 )
+from sticker_generator.config import (  # noqa: E402
+    ConfigError,
+    StickerConfig,
+    find_config_files,
+    get_config_paths,
+    load_config,
+)
 from sticker_generator.core import (  # noqa: E402
     create_sticker,
     generate_sticker,
@@ -46,6 +53,11 @@ from sticker_generator.styles import (  # noqa: E402
 )
 
 __all__ = [
+    "ConfigError",
+    "StickerConfig",
+    "find_config_files",
+    "get_config_paths",
+    "load_config",
     "create_sticker",
     "generate_sticker",
     "process_image",

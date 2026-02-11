@@ -45,7 +45,8 @@ Key modules:
 - `styles.py`: Style presets that modify prompts (kawaii, minimal, 3d, pixel-art, retro, watercolor)
 - `batch.py`: Batch processing - generate from prompt files or process image directories. `BatchItem`/`BatchResult` dataclasses, `parse_prompt_file()`, `batch_generate()`, `batch_process_images()`. Supports concurrent execution via `max_workers` parameter using `ThreadPoolExecutor`. `progress_callback` parameter for progress reporting
 - `sheet.py`: Sticker sheet generation - multiple variations combined into a grid. Supports concurrent execution via `max_workers` parameter using `ThreadPoolExecutor`. `progress_callback` parameter for progress reporting
-- `cli.py`: Command-line interface wrapping `create_sticker()`, `process_image()`, `generate_sticker_sheet()`, and batch functions. Configures the `sticker_generator` root logger with `StreamHandler(sys.stderr)` based on verbosity flags
+- `config.py`: TOML configuration file support. `StickerConfig` dataclass, `load_config()` discovers and merges config files (priority: CLI > CWD `.sticker-generator.toml` > `~/.config/sticker-generator/config.toml` > hardcoded defaults). `ConfigError` exception, `generate_config_template()`, validation, display formatting
+- `cli.py`: Command-line interface wrapping `create_sticker()`, `process_image()`, `generate_sticker_sheet()`, and batch functions. Configures the `sticker_generator` root logger with `StreamHandler(sys.stderr)` based on verbosity flags. `config` subcommand (`init`, `show`, `path`) for managing config files. `--no-config` flag to skip config file loading
 
 Logging hierarchy: Each module uses `logging.getLogger(__name__)`. `__init__.py` adds `NullHandler` (silent as library). CLI's `_setup_logging()` configures the `sticker_generator` root logger with a `StreamHandler(sys.stderr)`.
 
@@ -60,6 +61,7 @@ Logging hierarchy: Each module uses `logging.getLogger(__name__)`. `__init__.py`
 - **Concurrent execution**: `max_workers` parameter on `batch_generate()`, `batch_process_images()`, and `generate_sticker_sheet()` enables parallel processing via `ThreadPoolExecutor`. Default `max_workers=1` preserves sequential behavior. CLI flag: `--max-workers`. Strict mode forces sequential execution when `max_workers > 1`
 - **Progress bars**: tqdm progress bars for batch and sheet operations. CLI shows them by default; `--no-progress` or `--quiet` disables. Library API uses callback-based `progress_callback` parameter (tqdm-agnostic). `logging_redirect_tqdm()` prevents log/progress bar conflicts
 - **Save intermediates**: `--save-intermediates [DIR]` or `save_intermediates` parameter saves PNGs after each pipeline stage for debugging. `--debug` auto-enables this
+- **TOML configuration**: `StickerConfig` loaded from `~/.config/sticker-generator/config.toml` (global) and `.sticker-generator.toml` (CWD). CLI flags override config values. `config init [--global]` creates template, `config show` displays resolved values, `config path` shows lookup paths. `--no-config` skips loading. Requires `tomli` on Python < 3.11
 
 ## Output Formats
 
