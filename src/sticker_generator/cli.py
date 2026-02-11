@@ -6,6 +6,7 @@ import argparse
 import logging
 import sys
 from pathlib import Path
+from typing import Any
 
 from tqdm import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
@@ -15,6 +16,14 @@ from sticker_generator.batch import (
     batch_process_images,
     parse_prompt_file,
 )
+from sticker_generator.config import (
+    ConfigError,
+    StickerConfig,
+    format_config_for_display,
+    format_config_paths,
+    generate_config_template,
+    load_config,
+)
 from sticker_generator.core import create_sticker, process_image
 from sticker_generator.formats import get_available_formats
 from sticker_generator.image_processing import validate_transparency
@@ -22,6 +31,42 @@ from sticker_generator.sheet import generate_sticker_sheet
 from sticker_generator.styles import get_available_styles
 
 logger = logging.getLogger(__name__)
+
+# Single source of truth for hardcoded defaults.
+# These are applied when neither CLI flags nor config files provide a value.
+_DEFAULTS: dict[str, Any] = {
+    "output": "sticker.png",
+    "aspect_ratio": "1:1",
+    "edge_threshold": 64,
+    "hue_center": 115,
+    "hue_range": 35,
+    "min_saturation": 25,
+    "min_value": 40,
+    "green_threshold": 1.1,
+    "max_retries": 3,
+    "retry_delay": 1.0,
+    "delay": 1.0,
+    "max_workers": 1,
+    "padding": 10,
+    "variations": 1,
+    "save_raw": False,
+    "strict": False,
+    "resize_exact": False,
+    # These stay None as final default:
+    "api_key": None,
+    "style": None,
+    "output_format": None,
+    "quality": None,
+    "resize": None,
+    "columns": None,
+    "lossless": None,
+    "save_intermediates": None,
+}
+
+# Config field names that map to argparse dest names (when they differ)
+_CONFIG_TO_ARG: dict[str, str] = {
+    "output_format": "format",
+}
 
 
 def _setup_logging(level: int) -> None:
@@ -88,8 +133,128 @@ def parse_resize_arg(value: str) -> tuple[int, int]:
     return (width, height)
 
 
+def _apply_config(args: argparse.Namespace, config: StickerConfig) -> None:
+    """Merge config file values into args namespace.
+
+    Priority: CLI flag (non-None) > config value (non-None) > _DEFAULTS.
+    Mutates args in place.
+    """
+    for key, default in _DEFAULTS.items():
+        arg_name = key
+        config_field = key
+        # Map arg names that differ from config field names
+        for cfg_name, a_name in _CONFIG_TO_ARG.items():
+            if a_name == key:
+                config_field = cfg_name
+                break
+
+        cli_value = getattr(args, arg_name, None)
+        config_value = getattr(config, config_field, None)
+
+        if cli_value is not None:
+            # CLI flag was explicitly set — keep it
+            continue
+        elif config_value is not None:
+            setattr(args, arg_name, config_value)
+        else:
+            setattr(args, arg_name, default)
+
+    # Special case: lossless from config (--lossless/--lossy are separate flags)
+    # Only apply if neither --lossless nor --lossy was passed on CLI
+    if not args.lossless and not args.lossy:
+        if config.lossless is True:
+            args.lossless = True
+        elif config.lossless is False:
+            args.lossy = True
+
+
+def _fill_defaults(args: argparse.Namespace) -> None:
+    """Apply _DEFAULTS directly (used when --no-config is set)."""
+    for key, default in _DEFAULTS.items():
+        if getattr(args, key, None) is None:
+            setattr(args, key, default)
+
+
+def _handle_config_command(argv: list[str]) -> int:
+    """Handle 'config' subcommands."""
+    parser = argparse.ArgumentParser(
+        prog="sticker-generator config",
+        description="Manage sticker-generator configuration files",
+    )
+    sub = parser.add_subparsers(dest="subcommand")
+
+    init_parser = sub.add_parser("init", help="Create a config file template")
+    init_parser.add_argument(
+        "--global",
+        dest="global_",
+        action="store_true",
+        help="Create in ~/.config/sticker-generator/ instead of CWD",
+    )
+
+    sub.add_parser("show", help="Display resolved configuration")
+    sub.add_parser("path", help="Show config file lookup paths")
+
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit:
+        return 1
+
+    if args.subcommand is None:
+        parser.print_help()
+        return 1
+
+    if args.subcommand == "init":
+        return _config_init(args.global_)
+    elif args.subcommand == "show":
+        return _config_show()
+    elif args.subcommand == "path":
+        return _config_path()
+
+    return 1
+
+
+def _config_init(global_: bool) -> int:
+    """Create a config file template."""
+    if global_:
+        config_dir = Path.home() / ".config" / "sticker-generator"
+        config_dir.mkdir(parents=True, exist_ok=True)
+        path = config_dir / "config.toml"
+    else:
+        path = Path.cwd() / ".sticker-generator.toml"
+
+    if path.exists():
+        print(f"Config file already exists: {path}", file=sys.stderr)
+        return 1
+
+    path.write_text(generate_config_template())
+    print(f"Created config file: {path}")
+    return 0
+
+
+def _config_show() -> int:
+    """Display resolved configuration."""
+    try:
+        config = load_config()
+    except ConfigError as e:
+        print(f"Configuration error: {e}", file=sys.stderr)
+        return 1
+
+    print(format_config_for_display(config))
+    return 0
+
+
+def _config_path() -> int:
+    """Show config file lookup paths."""
+    print(format_config_paths())
+    return 0
+
+
 def main() -> int:
     """Main entry point for the CLI."""
+    # Intercept 'config' subcommand before argparse
+    if len(sys.argv) >= 2 and sys.argv[1] == "config":
+        return _handle_config_command(sys.argv[2:])
+
     parser = argparse.ArgumentParser(
         prog="sticker-generator",
         description="Generate stickers with transparent backgrounds using Gemini AI",
@@ -108,7 +273,7 @@ def main() -> int:
     parser.add_argument(
         "-o",
         "--output",
-        default="sticker.png",
+        default=None,
         help="Output filename (default: sticker.png)",
     )
     parser.add_argument(
@@ -120,29 +285,31 @@ def main() -> int:
     )
     parser.add_argument(
         "--aspect-ratio",
-        default="1:1",
+        default=None,
         help="Image aspect ratio (default: 1:1)",
     )
     parser.add_argument(
         "--save-raw",
         action="store_true",
+        default=None,
         help="Save the raw image before green screen removal",
     )
     parser.add_argument(
         "--edge-threshold",
         type=int,
-        default=64,
+        default=None,
         help="Alpha threshold for edge cleanup, 0-255 (default: 64)",
     )
     parser.add_argument(
         "--api-key",
+        default=None,
         help="Gemini API key (or set GEMINI_API_KEY environment variable)",
     )
     parser.add_argument(
         "-n",
         "--variations",
         type=int,
-        default=1,
+        default=None,
         help="Number of sticker variations to generate (default: 1)",
     )
     parser.add_argument(
@@ -164,13 +331,14 @@ def main() -> int:
     parser.add_argument(
         "--padding",
         type=int,
-        default=10,
+        default=None,
         help="Padding between stickers in sheet (default: 10 pixels)",
     )
     parser.add_argument(
         "-s",
         "--style",
         choices=get_available_styles(),
+        default=None,
         metavar="STYLE",
         help="Style preset: " + ", ".join(get_available_styles()),
     )
@@ -178,6 +346,7 @@ def main() -> int:
         "-f",
         "--format",
         choices=get_available_formats(),
+        default=None,
         metavar="FORMAT",
         help="Output format: "
         + ", ".join(get_available_formats())
@@ -187,33 +356,39 @@ def main() -> int:
         "-q",
         "--quality",
         type=int,
+        default=None,
         metavar="1-100",
         help="Quality for lossy formats (1-100, higher is better)",
     )
     parser.add_argument(
         "--lossless",
         action="store_true",
+        default=None,
         help="Force lossless compression",
     )
     parser.add_argument(
         "--lossy",
         action="store_true",
+        default=None,
         help="Force lossy compression",
     )
     parser.add_argument(
         "--resize",
         type=parse_resize_arg,
+        default=None,
         metavar="SIZE",
         help="Resize output to WIDTHxHEIGHT or SIZE for square (e.g., 512 or 512x256)",
     )
     parser.add_argument(
         "--resize-exact",
         action="store_true",
+        default=None,
         help="Force exact resize dimensions (may distort aspect ratio)",
     )
     parser.add_argument(
         "--strict",
         action="store_true",
+        default=None,
         help="Exit with error if quality validation fails",
     )
 
@@ -252,6 +427,12 @@ def main() -> int:
         help="Disable progress bars",
     )
 
+    parser.add_argument(
+        "--no-config",
+        action="store_true",
+        help="Ignore configuration files",
+    )
+
     # Retry parameters
     retry_group = parser.add_argument_group(
         "retry options",
@@ -260,13 +441,13 @@ def main() -> int:
     retry_group.add_argument(
         "--max-retries",
         type=int,
-        default=3,
+        default=None,
         help="Max retries for failed API calls (default: 3)",
     )
     retry_group.add_argument(
         "--retry-delay",
         type=float,
-        default=1.0,
+        default=None,
         help="Initial delay between retries in seconds (default: 1.0)",
     )
 
@@ -293,13 +474,13 @@ def main() -> int:
     batch_group.add_argument(
         "--delay",
         type=float,
-        default=1.0,
+        default=None,
         help="Delay between API requests in batch mode, seconds (default: 1.0)",
     )
     batch_group.add_argument(
         "--max-workers",
         type=int,
-        default=1,
+        default=None,
         help="Max concurrent workers for batch/sheet generation (default: 1)",
     )
 
@@ -311,31 +492,31 @@ def main() -> int:
     green_group.add_argument(
         "--hue-center",
         type=float,
-        default=115,
+        default=None,
         help="Center hue for green detection, degrees (default: 115)",
     )
     green_group.add_argument(
         "--hue-range",
         type=float,
-        default=35,
+        default=None,
         help="Hue tolerance in degrees (default: 35)",
     )
     green_group.add_argument(
         "--min-saturation",
         type=float,
-        default=25,
+        default=None,
         help="Min saturation %% to consider green (default: 25)",
     )
     green_group.add_argument(
         "--min-value",
         type=float,
-        default=40,
+        default=None,
         help="Min brightness %% to consider green (default: 40)",
     )
     green_group.add_argument(
         "--green-threshold",
         type=float,
-        default=1.1,
+        default=None,
         help="Aggressive green ratio threshold (default: 1.1)",
     )
 
@@ -348,6 +529,18 @@ def main() -> int:
         _setup_logging(logging.WARNING)
     else:
         _setup_logging(logging.INFO)
+
+    # Load and apply config files
+    if not args.no_config:
+        try:
+            config = load_config()
+        except ConfigError as e:
+            _setup_logging(logging.ERROR)
+            logger.error("Configuration error: %s", e)
+            return 1
+        _apply_config(args, config)
+    else:
+        _fill_defaults(args)
 
     # Compute save_intermediates directory
     save_intermediates: str | None = None
